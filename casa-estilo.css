@@ -1,0 +1,180 @@
+/* ============================================================================
+   Casa de Estilo · Web  —  el gemelo web de shared/theme.py
+   ----------------------------------------------------------------------------
+   MISMOS tokens que las apps de escritorio (coral #ff5a4d sobre oscuro frío).
+   Para las PWAs de la familia (Puzzle, DMXSimulatoR, KeyLab, SoundLab, AVHandbook…),
+   para que todas se sientan una sola familia. Inspirado en el pulido de
+   middlethings.co (iconos de trazo, chevrons que giran, toggles que deslizan) —
+   ver memoria middlethings-web-teardown.
+
+   ⚠️TODO va PREFIJADO con `ce-` (clases .ce-* y variables --ce-*) para poder
+   IMPORTARLO sin colisionar con las clases/variables que la app ya tenga
+   (lección de DMXSimulatoR 26 sep: .btn/.card/.badge chocaban). Dos formas de
+   adoptarlo, las dos válidas:
+     a) IMPORTAR y usar las clases .ce-* directamente (copiar+revestir).
+     b) Solo ALINEAR tus tokens a estos valores manteniendo tus nombres (lo que
+        hizo DMX cuando ya tenía sus propias clases).
+   Apps de TOKENS / React con estilos inline (p.ej. AVHandbook): este `:root{--ce-*}`
+   ES la fuente única de la paleta. No copies los hex a mano (derivan) — o usa
+   `var(--ce-accent)` en el style inline (React lo admite), o léelos una vez con
+   `getComputedStyle(document.documentElement).getPropertyValue('--ce-accent')`
+   tras cargar esta hoja, y arma tu objeto de tokens desde ahí.
+
+   REGLA: el coral es ACENTO, no protagonista. Fondo/estructura en oscuro frío;
+   el coral marca la acción, el foco, lo LIVE.
+
+   Uso:  <link rel="stylesheet" href="casa-estilo.css">  y las clases .ce-* .
+   Iconos: SVG de trazo inline (estilo Lucide), stroke=currentColor, 1.8–2 px.
+   ============================================================================ */
+
+:root{
+  /* — Superficies (frío, ligeramente azulado) — */
+  --ce-bg:#0e0f12; --ce-bg2:#0a0b0d; --ce-panel:#16171c; --ce-card:#1c1d23; --ce-card-hi:#25262e;
+  --ce-line:#2a2b32; --ce-line-soft:#212228; --ce-input:#161a22;
+  /* — Texto — */
+  --ce-text:#f2f2f4; --ce-muted:#8a8a92; --ce-muted2:#666770;
+  /* — Acento coral (= la familia) — */
+  --ce-accent:#ff5a4d; --ce-accent-hi:#ff6e63; --ce-on-accent:#14060a; --ce-accent-dim:#3a2422;
+  --ce-accent-wash:rgba(255,90,77,.12);
+  /* — Semáforo (ok/atención/info; el error/LIVE = el coral) — */
+  --ce-ok:#3fb950; --ce-warn:#d9a441; --ce-info:#4a9eff;
+  /* — Radios y tipografía — */
+  --ce-r:8px; --ce-r-sm:7px; --ce-r-lg:14px;
+  --ce-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+
+/* Base opcional: solo si quieres que la Casa vista TODO el <body>. Si tu app ya
+   tiene su fondo/tipografía, sáltate esto y usa solo las clases .ce-*. */
+.ce-base{background:var(--ce-bg);color:var(--ce-text);font-family:var(--ce-sans);
+  -webkit-font-smoothing:antialiased;line-height:1.45;}
+.ce-base *{box-sizing:border-box}
+
+/* Layout de arranque (opcional) */
+.ce-wrap{max-width:1120px;margin:0 auto;padding:0 16px;}
+.ce-panel{background:linear-gradient(180deg,var(--ce-panel),#131419);border:1px solid var(--ce-line);
+  border-radius:var(--ce-r-lg);padding:20px 20px 22px;}
+.ce-panel-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--ce-muted);margin:0 0 16px;display:flex;align-items:center;gap:8px;}
+.ce-panel-title svg{width:15px;height:15px;color:var(--ce-accent);opacity:.9}
+.ce-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+
+/* — Botones — */
+.ce-btn{font:inherit;font-size:13px;font-weight:550;border-radius:var(--ce-r);padding:8px 15px;
+  cursor:pointer;border:1px solid var(--ce-line);background:var(--ce-card);color:var(--ce-text);
+  display:inline-flex;align-items:center;gap:8px;
+  transition:border-color .16s,background .16s,transform .06s,color .16s;}
+.ce-btn svg{width:15px;height:15px}
+.ce-btn:hover{border-color:var(--ce-accent);}      /* hover = filo coral, NUNCA cambia el grosor */
+.ce-btn:active{transform:translateY(1px)}
+.ce-btn.ce-primary{background:var(--ce-accent);color:var(--ce-on-accent);border-color:var(--ce-accent);font-weight:650;}
+.ce-btn.ce-primary:hover{background:var(--ce-accent-hi);border-color:var(--ce-accent-hi);}
+.ce-btn.ce-ghost{background:transparent;color:var(--ce-muted);}
+.ce-btn.ce-ghost:hover{color:var(--ce-text);}
+.ce-btn.ce-disabled,.ce-btn:disabled{background:var(--ce-panel);color:var(--ce-muted2);
+  border-color:var(--ce-line-soft);cursor:not-allowed;pointer-events:none}
+/* Botón de SOLO icono, cuadrado (barras de herramientas: cuentagotas, ajustes…). Sugerido por KeyLab. */
+.ce-icon-btn{width:34px;height:34px;padding:0;border-radius:var(--ce-r);border:1px solid var(--ce-line);
+  background:var(--ce-card);color:var(--ce-text);cursor:pointer;display:inline-flex;align-items:center;
+  justify-content:center;transition:border-color .16s,background .16s,color .16s}
+.ce-icon-btn svg{width:16px;height:16px}
+.ce-icon-btn:hover{border-color:var(--ce-accent);color:var(--ce-accent)}
+.ce-icon-btn.ce-on{border-color:var(--ce-accent);color:var(--ce-accent);background:var(--ce-accent-wash)}
+.ce-icon-btn:disabled{color:var(--ce-muted2);border-color:var(--ce-line-soft);cursor:not-allowed;pointer-events:none}
+/* Utilidad de tamaño para un SVG de trazo inline (pega el icono de lucide.dev con
+   stroke="currentColor" y ponle .ce-ico). No metemos los paths en el CSS (no se puede);
+   esto solo estandariza el tamaño/alineación. */
+.ce-ico{width:16px;height:16px;flex:none}
+.ce-ico-sm{width:14px;height:14px;flex:none}
+.ce-ico-lg{width:20px;height:20px;flex:none}
+
+.ce-chip{background:transparent;border:1px solid var(--ce-line);border-radius:var(--ce-r-sm);
+  color:var(--ce-muted);font:inherit;font-size:12px;padding:5px 11px;cursor:pointer;
+  transition:border-color .16s,color .16s}
+.ce-chip:hover,.ce-chip.ce-on{border-color:var(--ce-accent);color:var(--ce-text)}
+.ce-chip.ce-on{background:var(--ce-accent-wash)}
+
+/* — Control segmentado (p.ej. Wi-Fi / Ethernet) — */
+.ce-seg{display:inline-flex;background:var(--ce-input);border:1px solid var(--ce-line);border-radius:var(--ce-r);padding:3px;gap:2px}
+.ce-seg button{font:inherit;font-size:12.5px;border:0;background:transparent;color:var(--ce-muted);
+  padding:7px 14px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:.16s}
+.ce-seg button svg{width:14px;height:14px}
+.ce-seg button.ce-on{background:var(--ce-card-hi);color:var(--ce-text);box-shadow:0 1px 0 rgba(0,0,0,.3)}
+
+/* — Interruptor (toggle) — el pomo desliza con rebote suave — */
+.ce-sw{display:inline-flex;align-items:center;gap:11px;font-size:13px;color:var(--ce-muted);cursor:pointer}
+.ce-track{width:42px;height:24px;border-radius:20px;background:var(--ce-input);border:1px solid var(--ce-line);
+  position:relative;flex:none;transition:background .2s,border-color .2s}
+.ce-track .ce-knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+  background:#c9cad0;transition:transform .22s cubic-bezier(.34,1.4,.5,1),background .2s}
+.ce-track.ce-on{background:var(--ce-accent);border-color:var(--ce-accent)}
+.ce-track.ce-on .ce-knob{transform:translateX(18px);background:#fff}
+
+/* — Desplegable / combo — la flechita gira a coral al abrir — */
+.ce-field{position:relative;min-width:180px}
+.ce-combo{width:100%;background:var(--ce-input);border:1px solid var(--ce-line);border-radius:var(--ce-r);
+  color:var(--ce-text);font:inherit;font-size:13px;padding:9px 12px;display:flex;align-items:center;
+  justify-content:space-between;cursor:pointer;transition:border-color .16s}
+.ce-combo:hover,.ce-combo.ce-open{border-color:var(--ce-accent)}
+.ce-combo .ce-chev{width:16px;height:16px;color:var(--ce-muted);transition:transform .22s ease,color .22s}
+.ce-combo.ce-open .ce-chev{transform:rotate(180deg);color:var(--ce-accent)}
+/* El menú FLOTA con sombra mac → da sensación de capas; se puede solapar a propósito */
+.ce-menu{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--ce-panel);
+  border:1px solid var(--ce-line);border-radius:var(--ce-r);padding:5px;z-index:5;
+  box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.ce-menu > *{font-size:13px;padding:8px 10px;border-radius:5px;color:var(--ce-text);cursor:pointer;display:block}
+.ce-menu > *:hover{background:#22242b}
+.ce-menu > .ce-sel{background:var(--ce-accent-wash);color:var(--ce-accent)}
+
+/* — Campos de texto — foco = filo coral — */
+.ce-inp{background:var(--ce-input);border:1px solid var(--ce-line);border-radius:var(--ce-r);color:var(--ce-text);
+  font:inherit;font-size:13px;padding:9px 12px;width:100%;outline:0;transition:border-color .16s}
+.ce-inp::placeholder{color:var(--ce-muted2)}
+.ce-inp:focus{border-color:var(--ce-accent)}
+
+/* — Slider — relleno + tirador coral. Pasa el % en --p para pintar el relleno.
+     El estilo del range va SCOPED a .ce-slider para no secuestrar otros ranges. — */
+.ce-slider{display:flex;align-items:center;gap:12px}
+.ce-slider input[type=range]{-webkit-appearance:none;appearance:none;height:3px;border-radius:2px;
+  background:linear-gradient(90deg,var(--ce-accent) 0 var(--p,50%),var(--ce-input) var(--p,50%) 100%);flex:1;outline:0}
+.ce-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--ce-accent);cursor:pointer;box-shadow:0 0 0 4px rgba(255,90,77,.14)}
+.ce-slider input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:var(--ce-accent);cursor:pointer}
+.ce-val{font-variant-numeric:tabular-nums;font-size:12px;color:var(--ce-muted);min-width:52px;text-align:right}
+.ce-stepper{display:inline-flex;align-items:center;gap:2px;background:var(--ce-input);border:1px solid var(--ce-line);
+  border-radius:var(--ce-r);padding:3px}
+.ce-stepper button{width:26px;height:26px;border:0;background:transparent;color:var(--ce-muted);font-size:16px;
+  border-radius:6px;cursor:pointer;transition:.15s}
+.ce-stepper button:hover{background:var(--ce-card-hi);color:var(--ce-text)}
+.ce-stepper .ce-n{font-size:13px;padding:0 10px;font-variant-numeric:tabular-nums}
+
+/* — Badges de señal — error/LIVE = coral (la palabra desambigua) — */
+.ce-badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;
+  border:1px solid transparent;letter-spacing:.02em}
+.ce-badge .ce-dot{width:7px;height:7px;border-radius:50%}
+.ce-b-ok{color:var(--ce-ok);border-color:rgba(63,185,80,.35);background:rgba(63,185,80,.10)}
+.ce-b-warn{color:var(--ce-warn);border-color:rgba(217,164,65,.35);background:rgba(217,164,65,.10)}
+.ce-b-info{color:var(--ce-info);border-color:rgba(74,158,255,.35);background:rgba(74,158,255,.10)}
+.ce-b-live{color:var(--ce-accent);border-color:rgba(255,90,77,.4);background:var(--ce-accent-wash)}
+.ce-b-live .ce-dot{background:var(--ce-accent);animation:ce-pulse 1.6s infinite}
+@keyframes ce-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* — Tarjetas — */
+.ce-card{background:var(--ce-card);border:1px solid var(--ce-line);border-radius:12px;padding:15px;
+  transition:border-color .16s,transform .12s}
+.ce-card:hover{border-color:#3a3b44;transform:translateY(-2px)}
+.ce-card .ce-t{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px;margin-bottom:6px}
+.ce-card .ce-t svg{width:17px;height:17px;color:var(--ce-accent)}
+.ce-card p{margin:0;color:var(--ce-muted);font-size:12.5px}
+
+/* — Monitor (feed = <video loop muted autoplay playsinline>; PTZ recorta el clip) — */
+.ce-monitor{border-radius:12px;border:1px solid var(--ce-line);aspect-ratio:16/9;position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center}
+.ce-mon-off{background:repeating-linear-gradient(45deg,#101116 0 10px,#0c0d11 10px 20px);
+  color:var(--ce-muted2);font-size:12px;letter-spacing:.1em}
+.ce-mon-on{background:radial-gradient(120% 120% at 30% 20%,#3a4a63,#141821)}
+.ce-monitor > video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ce-mon-cam{position:absolute;top:10px;left:10px;font-size:11px;background:rgba(0,0,0,.5);
+  padding:3px 9px;border-radius:6px;backdrop-filter:blur(4px);z-index:1}
+.ce-mon-live{position:absolute;top:10px;right:10px;z-index:1}
+
+@media(prefers-reduced-motion:reduce){.ce-base *{animation:none!important;transition:none!important}}

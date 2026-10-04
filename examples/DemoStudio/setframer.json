@@ -1,0 +1,46 @@
+{
+  "app": "SetFrameR",
+  "created": "2026-10-04T09:23:04.695Z",
+  "w": 1920,
+  "h": 1080,
+  "set": "Demo studio",
+  "view": {
+    "pos": [
+      0,
+      1.6000000000000005,
+      7
+    ],
+    "target": [
+      0,
+      1.4,
+      0
+    ],
+    "focal": 33,
+    "sensor": 23.5
+  },
+  "camera": {
+    "tilt": -1.6365770416167231,
+    "pan": 0,
+    "dist": 7.002856560004639,
+    "height": 1.7000000000000006,
+    "focal": 33,
+    "sensor": 23.5,
+    "fovV": 22.651165564313647,
+    "fovH": 39.19762264917201
+  },
+  "zooms": [
+    {
+      "name": "Full",
+      "zoom": 1
+    },
+    {
+      "name": "Medium Shot",
+      "zoom": 1.6
+    },
+    {
+      "name": "Close Up",
+      "zoom": 2.5
+    }
+  ],
+  "hiddenObjects": []
+}

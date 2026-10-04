@@ -1,0 +1,9 @@
+<virtualSet>
+  <input name="Background" x="0" y="0" zoomX="1" zoomY="1" rotateX="0" rotateY="0" rotateZ="0" cropping="0,0,1,1" dynamic="false">Background.png</input>
+  <input name="Screen A" x="0" y="0" zoomX="1" zoomY="1" rotateX="0" rotateY="0" rotateZ="0" cropping="0,0,1,1" dynamic="true" uvmap="ScreenA_uv.png">blank.png</input>
+  <input name="Screen B" x="0" y="0" zoomX="1" zoomY="1" rotateX="0" rotateY="0" rotateZ="0" cropping="0,0,1,1" dynamic="true" uvmap="ScreenB_uv.png">blank.png</input>
+  <input name="Talent" x="0" y="0" zoomX="1" zoomY="1" rotateX="0" rotateY="0" rotateZ="0" cropping="0,0,1,1" dynamic="true" uvmap="Talent_uv.png">blank.png</input>
+  <zoom name="Full" x="0" y="0" zoom="1" />
+  <zoom name="Medium Shot" x="0" y="0" zoom="1.6" />
+  <zoom name="Close Up" x="0" y="0" zoom="2.5" />
+</virtualSet>

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SetFrameR</title>
+<meta name="description" content="Frame a 3D virtual set and export it as a vMix Virtual Set (background + screen and talent UV maps).">
+<meta name="theme-color" content="#0e0f12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="casa-estilo.css">
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+</head>
+<body class="ce-base">
+<header id="top">
+  <div class="brand"><img src="icon.svg" alt=""><span>SetFrame<b>R</b></span></div>
+  <div class="ce-row">
+    <button class="ce-btn" id="btnOpenSet" title="glTF / GLB (for a .gltf, select it together with its .bin and textures)">Open set…</button>
+    <button class="ce-btn ce-ghost" id="btnOpenFolder" title="A folder containing a .gltf and its files">Open folder…</button>
+    <button class="ce-btn ce-ghost" id="btnDemo">Demo studio</button>
+    <button class="ce-btn" id="btnOpenHdri" title=".hdr or .exr equirectangular">Open HDRI…</button>
+  </div>
+  <input type="file" id="fileSet" accept=".glb,.gltf,.bin,.png,.jpg,.jpeg,.webp,.ktx2" multiple hidden>
+  <input type="file" id="fileFolder" webkitdirectory hidden>
+  <input type="file" id="fileHdri" accept=".hdr,.exr" hidden>
+</header>
+
+<main>
+  <section id="stage">
+    <div id="frame">
+      <canvas id="c"></canvas>
+      <svg id="guides" viewBox="0 0 160 90" preserveAspectRatio="none">
+        <rect x="8" y="4.5" width="144" height="81"/>
+        <rect class="title" x="16" y="9" width="128" height="72"/>
+        <line x1="53.33" y1="0" x2="53.33" y2="90"/><line x1="106.67" y1="0" x2="106.67" y2="90"/>
+        <line x1="0" y1="30" x2="160" y2="30"/><line x1="0" y1="60" x2="160" y2="60"/>
+      </svg>
+      <div id="zoomRects"></div>
+    </div>
+    <div id="empty">Open a glTF / GLB set — or try the <b>Demo studio</b><br><span>You can also drop files or a folder here</span></div>
+    <div id="busy" class="ce-badge ce-b-info" hidden></div>
+    <div id="pickHint" class="ce-badge ce-b-live" hidden></div>
+    <div id="hud"></div>
+    <div id="restoreBar" class="ce-badge ce-b-info" hidden><span id="restoreText"></span>
+      <button class="ce-btn ce-primary sm" id="btnRestore">Restore</button><button class="ce-btn ce-ghost sm" id="btnRestoreNo">✕</button></div>
+    <div id="shotBar" class="ce-badge ce-b-live" hidden><span id="shotText"></span><button class="ce-btn ce-ghost sm" id="btnShotExit">Back to full frame</button></div>
+  </section>
+
+  <aside id="side">
+    <div class="ce-panel">
+      <div class="ce-panel-title">Project</div>
+      <div class="field"><span>Name</span><input class="ce-inp" id="projName" placeholder="Untitled"></div>
+      <div class="ce-row gap-top">
+        <button class="ce-btn ce-primary sm" id="btnSave">Save</button>
+        <button class="ce-btn sm" id="btnSaveAs">Save as new</button>
+        <button class="ce-btn ce-ghost sm" id="btnNew" title="Start an empty project">New</button>
+      </div>
+      <div id="projMsg" class="hint"></div>
+      <div id="projList"></div>
+      <div class="ce-row gap-top">
+        <button class="ce-btn ce-ghost sm" id="btnProjDownload" title="One file with the set, the HDRI and all your settings — to move it to another computer or hand it in">Download project file</button>
+        <button class="ce-btn ce-ghost sm" id="btnProjOpen">Open project file…</button>
+      </div>
+      <input type="file" id="fileProj" accept=".setframer,.zip" hidden>
+      <div class="hint">Saved in this browser, on this computer (works offline). Your work is also autosaved every few seconds.</div>
+    </div>
+
+    <div class="ce-panel">
+      <div class="ce-panel-title">Set</div>
+      <div id="setInfo" class="muted">No set loaded</div>
+      <div class="ce-row gap-top">
+        <div class="ce-seg" id="segSide" title="Put the camera on that side of the set, looking at its centre"><button data-v="0" class="ce-on">Front</button><button data-v="2">Back</button><button data-v="3">Left</button><button data-v="1">Right</button></div>
+        <label class="ce-sw"><span class="ce-track" id="swGrid"><span class="ce-knob"></span></span>Floor grid</label>
+        <label class="ce-sw"><span class="ce-track" id="swGuides"><span class="ce-knob"></span></span>Guides</label>
+      </div>
+      <details class="adv"><summary>Advanced</summary>
+      <div class="field" title="glTF should be in metres, but some downloads come in centimetres or inches. Check that a door is ~2 m and a desk ~0.75 m high."><span>Units</span><select class="ce-inp" id="units">
+        <option value="1">Metres</option><option value="0.01">Centimetres</option><option value="0.001">Millimetres</option>
+        <option value="0.0254">Inches</option><option value="0.3048">Feet</option></select></div>
+        <div class="hint">Detected automatically. Change it only if the set looks the wrong size (a door should be ~2 m).</div>
+      </details>
+    </div>
+
+    <div class="ce-panel">
+      <div class="ce-panel-title">Objects — hide or move props</div>
+      <button class="ce-btn sm" id="btnPickObject">Select object</button>
+      <div id="objSel" hidden>
+        <div class="objname"><span id="objName"></span><button class="ce-btn ce-ghost sm" id="btnObjParent" title="Select the group it belongs to">Whole group ↑</button></div>
+        <div class="ce-row">
+          <button class="ce-btn sm" id="btnObjHide">Hide</button>
+          <button class="ce-btn sm" id="btnObjMove">Move</button>
+          <button class="ce-btn sm" id="btnObjRotate">Rotate</button>
+          <button class="ce-btn ce-ghost sm" id="btnObjReset">Reset</button>
+        </div>
+        <button class="ce-btn sm gap-top" id="btnObjFront" title="Mark it as standing IN FRONT of the presenter (a desk). It is exported as Foreground.png with transparency, for keying on the ATEM / Ultimatte.">In front of presenter</button>
+      </div>
+      <div id="hiddenList"></div>
+      <div id="frontList"></div>
+      <div class="hint">Click props (lamps, stands, people…) to hide them or put them elsewhere. Delete = hide · Esc = done.</div>
+    </div>
+
+    <div class="ce-panel">
+      <div class="ce-panel-title">Lighting</div>
+      <div id="hdriInfo" class="muted">Built-in neutral studio light. Load an HDRI (.hdr/.exr, free at polyhaven.com) to light the set with a real place.</div>
+      <div class="field" title="Only what is seen BEHIND the set (through windows, above open walls). It does not light the set."><span>Background</span>
+        <div class="ce-seg" id="segBg"><button data-v="hdri" class="ce-on">HDRI</button><button data-v="color">Colour</button></div>
+        <input type="color" id="bgColor" value="#202024">
+      </div>
+      <div class="field" title="Turns the HDRI around the set: changes where the light comes from."><span>Rotation</span><div class="ce-slider"><input type="range" id="envRot" min="-180" max="180" value="0"><span class="ce-val" id="envRotV">0°</span></div></div>
+      <div class="field" title="Strength of the light coming from the HDRI (or the built-in light)."><span>Intensity</span><div class="ce-slider"><input type="range" id="envInt" min="0" max="300" value="100"><span class="ce-val" id="envIntV">1.00</span></div></div>
+      <div class="field" title="Like the camera iris: brighter or darker overall, in stops (EV)."><span>Exposure</span><div class="ce-slider"><input type="range" id="exposure" min="-300" max="300" value="0"><span class="ce-val" id="exposureV">0.0 EV</span></div></div>
+      <button class="ce-btn ce-ghost sm" id="btnClearHdri" hidden>Remove HDRI</button>
+      <details class="adv"><summary>Advanced</summary>
+      <div class="field" title="Blurs the HDRI when it is shown as background."><span>Blur</span><div class="ce-slider"><input type="range" id="envBlur" min="0" max="100" value="0"><span class="ce-val" id="envBlurV">0.00</span></div></div>
+      <div class="field"><span>Tone map</span>
+        <div class="ce-seg" id="segTone" title="How very bright light is squeezed into the screen. Neutral keeps the set's own colours; ACES = punchy film contrast; AgX = soft, natural highlights."><button data-v="neutral" class="ce-on">Neutral</button><button data-v="aces">ACES</button><button data-v="agx">AgX</button></div>
+      </div>
+        <div class="hint">Leave Tone map on Neutral unless you light the set with a strong HDRI (sun): it keeps the set's own colours.</div>
+      </details>
+    </div>
+
+    <div class="ce-panel">
+      <div class="ce-panel-title">Camera — match your real one</div>
+      <div class="field"><span>Sensor</span><select class="ce-inp" id="sensor"></select></div>
+      <div class="field"><span>Lens</span><input class="ce-inp" id="lens" list="lensList" placeholder="Search the ClapperQR catalogue…"><datalist id="lensList"></datalist></div>
+      <div class="field"><span>Focal</span><div class="ce-slider"><input type="range" id="focal" min="4" max="300" value="35"><input class="ce-inp num" id="focalN" type="number" min="1" max="1200" step="0.5" value="35"><span class="unit">mm</span></div></div>
+      <div class="grid3">
+        <label>Height<input class="ce-inp num" id="camH" type="number" step="0.05"><span class="unit">m</span></label>
+        <label>Tilt<input class="ce-inp num" id="camTilt" type="number" step="0.5"><span class="unit">°</span></label>
+        <label>Pan<input class="ce-inp num" id="camPan" type="number" step="0.5"><span class="unit">°</span></label>
+      </div>
+      <div class="hint">Orbit: drag · Pan: right-drag · Wheel: go towards the mouse · Double-click: orbit around that spot · Walk: W A S D, Q/E down/up · Hold Shift = slow and precise, Alt/Option = fast</div>
+    </div>
+
+    <div class="ce-panel">
+      <div class="ce-panel-title">Live — control room</div>
+      <button class="ce-btn sm" id="btnOutput">Open clean output</button>
+      <div id="outputMsg" class="hint">A separate 1920×1080 window with only the set. In vMix add it with <b>Desktop Capture</b> (or NDI Screen Capture) and send it to the ATEM as the background: frame the shot while watching the control-room monitors.</div>
+      <div class="sub-title">Live camera</div>
+      <div class="field"><span>Source</span><select class="ce-inp" id="liveDevice"><option value="">Choose a camera / capture card…</option></select></div>
+      <div class="ce-row gap-top">
+        <button class="ce-btn sm" id="btnLive">Connect</button>
+        <label class="ce-sw" id="swLiveWrap" hidden><span class="ce-track ce-on" id="swLive"><span class="ce-knob"></span></span>Show over the set</label>
+      </div>
+      <div id="liveCtl" hidden>
+        <div class="field" title="On the presenter card = what vMix's virtual set will show (the desk hides the legs). Full frame = what the ATEM / Ultimatte does with the camera over the background."><span>Show</span><div class="ce-seg" id="segLiveMode"><button data-v="card" class="ce-on">On presenter</button><button data-v="frame">Full frame</button></div></div>
+        <div class="field"><span>Key</span><div class="ce-seg" id="segKey"><button data-v="1" class="ce-on">Chroma</button><button data-v="0">Off</button></div></div>
+        <div class="field"><span>Key colour</span><div class="ce-row"><input type="color" id="keyColor" value="#00b140"><button class="ce-btn ce-ghost sm" id="btnKeyPick" title="Click on the green background in the viewer">Pick from picture</button></div></div>
+        <div class="field" title="How far from the key colour still counts as background"><span>Similarity</span><div class="ce-slider"><input type="range" id="keySim" min="1" max="100" value="25"><span class="ce-val" id="keySimV"></span></div></div>
+        <div class="field" title="Softness of the edge"><span>Smoothness</span><div class="ce-slider"><input type="range" id="keySmooth" min="1" max="100" value="8"><span class="ce-val" id="keySmoothV"></span></div></div>
+        <div class="field" title="Removes the green tint on edges and hair"><span>Spill</span><div class="ce-slider"><input type="range" id="keySpill" min="1" max="100" value="10"><span class="ce-val" id="keySpillV"></span></div></div>
+        <div class="field" title="See-through camera, to line things up"><span>Opacity</span><div class="ce-slider"><input type="range" id="liveOp" min="0" max="100" value="100"><span class="ce-val" id="liveOpV"></span></div></div>
+      </div>
+      <div class="hint">Shown only here, to frame against the real shot — never exported, never in the clean output.</div>
+    </div>
+
+    <div class="ce-panel">
+      <div class="ce-panel-title">vMix layers</div>
+      <div class="ce-row">
+        <button class="ce-btn sm" id="btnPickScreen">+ Screen</button>
+        <button class="ce-btn sm" id="btnCenterTalent" title="Put the presenter in the middle of the shot (or bring them back there)">Presenter in shot</button>
+        <button class="ce-btn ce-ghost sm" id="btnPickTalent" title="Click a spot on the floor">Place by clicking</button>
+      </div>
+      <div id="roleList"></div>
+      <details class="adv" id="layersAdv"><summary>Advanced</summary>
+        <div class="hint">Screens are oriented automatically. Open this only if a test card shows upside down or mirrored: rotate / mirror buttons appear on each screen.</div>
+      </details>
+      <div id="talentRow" hidden>
+        <div class="grid3">
+          <label title="How far in front of the camera">Distance<input class="ce-inp num" id="talDist" type="number" step="0.1" min="0.3"><span class="unit">m</span></label>
+          <label title="Left (−) / right (+) of the centre of the shot">Sideways<input class="ce-inp num" id="talSide" type="number" step="0.05"><span class="unit">m</span></label>
+          <label>&nbsp;<button class="ce-btn ce-ghost sm" id="btnTalCenter" title="Back to the centre of the shot">Centre</button></label>
+        </div>
+        <div class="field"><span>Presenter frame</span><div class="ce-slider"><input type="range" id="talentH" min="50" max="600" value="220"><span class="ce-val" id="talentHV">2.20 m</span></div></div>
+        <div class="hint">Drag the orange card on the floor, or type its distance. Frame = height the REAL camera covers at the presenter (≈2.2 m = full body). The keyed camera is mapped onto this card.</div>
+      </div>
+    </div>
+
+    <div class="ce-panel">
+      <div class="ce-panel-title">Shots (vMix zooms)</div>
+      <div id="zoomList"></div>
+      <button class="ce-btn ce-ghost sm" id="btnAddZoom">+ Add shot</button>
+      <div class="hint">vMix zooms are 2D crops of the set (no perspective change). Export at 4K so close shots stay sharp. Off-centre shots: adjust in vMix and use its Export.</div>
+    </div>
+
+    <div class="ce-panel">
+      <div class="ce-panel-title">Export</div>
+      <div class="field"><span>Name</span><input class="ce-inp" id="setName" value="SetFrameR"></div>
+      <div class="field"><span>Size</span><select class="ce-inp" id="res">
+        <option value="1920x1080">1920 × 1080 (HD)</option>
+        <option value="3840x2160">3840 × 2160 (4K)</option>
+        <option value="1280x720">1280 × 720</option>
+      </select></div>
+      <div class="ce-row gap-top">
+        <button class="ce-btn ce-primary" id="btnExportZip">Export vMix set (.zip)</button>
+        <button class="ce-btn" id="btnExportDir" hidden>Save set to folder…</button>
+        <button class="ce-btn ce-ghost" id="btnExportPng">Background PNG only</button>
+        <button class="ce-btn ce-ghost" id="btnExportFg" hidden title="The background AND the props marked “In front of presenter” (with transparency) — the pair the ATEM / Ultimatte needs">Background + Foreground (.zip)</button>
+      </div>
+      <div id="exportMsg" class="hint"></div>
+      <div class="hint">In vMix: <b>Add Input → Virtual Set → Browse</b>, pick the unzipped folder. Then assign your inputs to Screen A/B and Talent (chroma-keyed camera).</div>
+    </div>
+  </aside>
+</main>
+
+<script type="module" src="app.js"></script>
+<script src="report.js" data-app="SetFrameR" data-label="Report"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>

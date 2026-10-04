@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SetFrameR output</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  #out { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  #tip { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #8a8a92;
+    font: 13px -apple-system, "Segoe UI", sans-serif; text-align: center; line-height: 1.7; cursor: default; }
+  body.live #tip { display: none; }
+</style>
+</head>
+<body>
+<!-- Filled every frame by the SetFrameR window that opened this one (same origin). Nothing else is drawn
+     here on purpose: capture this window in vMix (Desktop Capture) or with NDI Screen Capture. -->
+<canvas id="out"></canvas>
+<div id="tip">SetFrameR clean output · 1920×1080<br>Waiting for the main window…<br>Double-click for full screen</div>
+<script>
+  document.addEventListener('dblclick', () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen());
+  // once frames arrive (the canvas gets its size), hide the tip
+  const out = document.getElementById('out');
+  const t = setInterval(() => { if (out.width === 1920) { document.body.classList.add('live'); clearInterval(t); } }, 200);
+  if (!window.opener) document.getElementById('tip').innerHTML = 'Open this window from SetFrameR<br>(Live → Open clean output)';
+</script>
+</body>
+</html>

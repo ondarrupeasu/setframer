@@ -62,6 +62,11 @@ vMix**. Los alumnos de Tartanga ya ponen el fondo del croma con vMix → esa es 
   capa 0: la tarjeta del presentador vive en la capa 1 y no oscurece nada), *Sky* = `objects/Sky.js` renderizado a un
   cubemap (fondo) + PMREM (luz), sigue al sol; ×`SKY_GAIN` (0,05) porque va en unidades físicas. Todo apagado por
   defecto (los platós de TV traen la luz horneada). `draw()` = único punto de render del visor/salida/export.
+- **Luces colocables** (panel Lights): SpotLight/PointLight reales (decay 2, `candela()` = intensidad), color por
+  temperatura, sombra opcional (1024), *glow* = Sprite aditivo en el grupo `glows` (sale en el fondo exportado; se
+  oculta en los pases UV y de primer plano). Punto de arrastre en `helpers` (capa 1). Las luces que trae el glTF
+  (KHR_lights_punctual) se listan como «from the file» (fuerza ×, sombra, apagar). Sin rebotes (eso = hornear en Blender).
+  OJO: la propiedad `cone` es el ángulo; la guía visual es `coneHelper`.
 
 ## Ficheros
 `index.html` · `app.js` (UI) · `project.js` (guardar/abrir proyectos) · `output.html` (salida limpia) · `viewer.js` (three.js: escena, carga, cámara, roles, picking, PNG) · `vmixset.js`

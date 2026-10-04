@@ -209,6 +209,60 @@ function showLightUI(sun, ao) {
   }
 }
 
+// ---- lights (lamps placed in the set) ----------------------------------------------------------
+$('btnAddLight').onclick = () => { if (!V.state.setRoot) return fail('Lights', new Error('Load a set first')); setPick('light', 'Click a lamp (or any spot) in the set · Esc to cancel'); };
+$('btnDupLight').onclick = () => { const id = V.getSelectedLightId(); if (id) V.duplicateLight(id); };
+$('btnDelLight').onclick = () => { const id = V.getSelectedLightId(); if (id) V.removeLight(id); };
+const selLight = () => V.state.lights.find((l) => l.id === V.getSelectedLightId());
+const setLightProp = (patch) => { const e = selLight(); if (e) V.updateLight(e.id, patch); };
+seg('segLightType', (v) => setLightProp({ type: v }));
+slider('lightK', (v) => setLightProp({ kelvin: v }), (v) => `${v} K`);
+slider('lightStr', (v) => setLightProp({ strength: v }), (v) => `${v}`);
+slider('lightCone', (v) => setLightProp({ cone: v }), (v) => `${v}°`);
+slider('lightSoft', (v) => setLightProp({ softness: v / 100 }), (v) => `${v}%`);
+slider('lightTilt', (v) => setLightProp({ tilt: v }), (v) => `${v}°`);
+slider('lightYaw', (v) => setLightProp({ yaw: v }), (v) => `${v}°`);
+$('swLightShadow').parentElement.onclick = (e) => { e.preventDefault(); const l = selLight(); if (l) setLightProp({ shadow: !l.shadow }); };
+$('swLightGlow').parentElement.onclick = (e) => { e.preventDefault(); const l = selLight(); if (l) setLightProp({ glowOn: !l.glowOn }); };
+// show a slider value without firing it (the input event would write it back to the light)
+function showSlider(id, v) {
+  const el = $(id); el.value = v;
+  el.style.setProperty('--p', `${(100 * (el.value - el.min)) / (el.max - el.min)}%`);
+  $(id + 'V').textContent = id === 'lightK' ? `${v} K` : id === 'lightSoft' ? `${v}%` : id === 'lightStr' ? `${v}` : `${v}°`;
+}
+function renderLights() {
+  const list = $('lightList'); list.textContent = '';
+  const selId = V.getSelectedLightId();
+  for (const e of V.state.lights) {
+    const row = document.createElement('div'); row.className = 'role' + (e.id === selId ? ' sel' : '');
+    const c = '#' + e.light.color.getHexString();
+    row.innerHTML = `<span class="swatch"></span><span class="nm"></span><span class="ops"><button title="${e.fromFile ? 'Switch off' : 'Delete'}">${e.fromFile ? (e.on === false ? 'Off' : 'On') : '✕'}</button></span>`;
+    row.querySelector('.swatch').style.background = e.on === false ? 'transparent' : c;
+    row.querySelector('.nm').textContent = `${e.name}${e.fromFile ? ' · from the file' : ''} · ${e.type === 'spot' ? 'spot' : 'bulb'}`;
+    row.onclick = () => V.selectLight(e.id);
+    row.querySelector('button').onclick = (ev) => {
+      ev.stopPropagation();
+      if (e.fromFile) V.updateLight(e.id, { on: e.on === false }); else V.removeLight(e.id);
+    };
+    list.appendChild(row);
+  }
+  const e = selLight();
+  $('lightCtl').hidden = !e;
+  $('btnDupLight').disabled = !e || e.fromFile;
+  if (!e) return;
+  const own = !e.fromFile, spot = e.type === 'spot';
+  $('lightTypeRow').hidden = !own; $('lightKRow').hidden = !own;
+  $('lightConeRow').hidden = $('lightSoftRow').hidden = $('lightTiltRow').hidden = $('lightYawRow').hidden = !(own && spot);
+  $('segLightType').querySelectorAll('button').forEach((b) => b.classList.toggle('ce-on', b.dataset.v === e.type));
+  if (document.activeElement?.type !== 'range') {
+    if (own) { showSlider('lightK', e.kelvin); showSlider('lightCone', e.cone); showSlider('lightSoft', Math.round(e.softness * 100)); showSlider('lightTilt', e.tilt); showSlider('lightYaw', e.yaw); }
+    showSlider('lightStr', e.strength);
+  }
+  $('swLightShadow').classList.toggle('ce-on', !!e.shadow);
+  $('swLightGlow').classList.toggle('ce-on', !!e.glowOn);
+}
+V.events.addEventListener('lights', renderLights);
+
 // ---- camera / lens ----------------------------------------------------------------------------
 const SENSORS = [   // horizontal width in mm (16:9 recording area where it matters)
   ['Super 35 (24.9 mm)', 24.89], ['Full frame (36 mm)', 36], ['APS-C Canon (22.3 mm)', 22.3],
@@ -281,6 +335,7 @@ window.addEventListener('keydown', (e) => {
 V.events.addEventListener('pick', (e) => {
   const { mode, mesh, point } = e.detail;
   if (mode === 'object') { V.select(V.objectOf(mesh)); return; }   // stays in select mode
+  if (mode === 'light') { V.addLight(e.detail.point, e.detail.normal); setPick(null); return; }
   if (mode === 'screen') {
     const used = new Set([...V.state.roles.values()].map((r) => r.role));
     const free = LETTERS.find((l) => !used.has(l));

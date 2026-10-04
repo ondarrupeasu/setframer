@@ -140,6 +140,30 @@
     </div>
 
     <div class="ce-panel">
+      <div class="ce-panel-title">Lights — lamps &amp; practicals</div>
+      <div class="ce-row">
+        <button class="ce-btn sm" id="btnAddLight" title="Then click a lamp (or any spot) in the set: a light appears there, aiming down">+ Light</button>
+        <button class="ce-btn ce-ghost sm" id="btnDupLight" title="A copy of the selected light, 1.5 m to the right — handy for a row of street lamps">Duplicate</button>
+      </div>
+      <div id="lightList"></div>
+      <div id="lightCtl" hidden>
+        <div class="field" id="lightTypeRow"><span>Type</span><div class="ce-seg" id="segLightType"><button data-v="spot" class="ce-on" title="A cone of light (street lamp, spotlight)">Spot</button><button data-v="point" title="Light in every direction (bulb, lantern)">Bulb</button></div></div>
+        <div class="field" id="lightKRow" title="Colour: ~2000 K = orange sodium street lamp, 2700 K = warm bulb, 4000 K = neutral, 6500 K = cold LED"><span>Colour</span><div class="ce-slider"><input type="range" id="lightK" min="1800" max="8000" step="100" value="2700"><span class="ce-val" id="lightKV"></span></div></div>
+        <div class="field"><span>Strength</span><div class="ce-slider"><input type="range" id="lightStr" min="0" max="100" value="50"><span class="ce-val" id="lightStrV"></span></div></div>
+        <div class="field" id="lightConeRow" title="Width of the cone of light"><span>Cone</span><div class="ce-slider"><input type="range" id="lightCone" min="5" max="85" value="40"><span class="ce-val" id="lightConeV"></span></div></div>
+        <div class="field" id="lightSoftRow" title="Soft or hard edge of the pool of light"><span>Edge</span><div class="ce-slider"><input type="range" id="lightSoft" min="0" max="100" value="50"><span class="ce-val" id="lightSoftV"></span></div></div>
+        <div class="field" id="lightTiltRow" title="0° = straight down; 90° = horizontal"><span>Aim tilt</span><div class="ce-slider"><input type="range" id="lightTilt" min="0" max="90" value="0"><span class="ce-val" id="lightTiltV"></span></div></div>
+        <div class="field" id="lightYawRow" title="Which way it leans when tilted"><span>Aim turn</span><div class="ce-slider"><input type="range" id="lightYaw" min="0" max="360" value="0"><span class="ce-val" id="lightYawV"></span></div></div>
+        <div class="ce-row gap-top">
+          <label class="ce-sw" title="Cast shadows (costs performance: use on a few lights)"><span class="ce-track" id="swLightShadow"><span class="ce-knob"></span></span>Shadow</label>
+          <label class="ce-sw" title="A soft glow on the lamp itself, so it looks on"><span class="ce-track" id="swLightGlow"><span class="ce-knob"></span></span>Glow</label>
+          <button class="ce-btn ce-ghost sm" id="btnDelLight">Delete</button>
+        </div>
+      </div>
+      <div class="hint">Drag a light’s dot to move it (Alt = up/down). For a night scene: Sun off, Background Colour (dark) or a dark HDRI, lower Intensity. No bounce light — for that, bake the lighting in Blender.</div>
+    </div>
+
+    <div class="ce-panel">
       <div class="ce-panel-title">Camera — match your real one</div>
       <div class="field"><span>Sensor</span><select class="ce-inp" id="sensor"></select></div>
       <div class="field"><span>Lens</span><input class="ce-inp" id="lens" list="lensList" placeholder="Search the ClapperQR catalogue…"><datalist id="lensList"></datalist></div>

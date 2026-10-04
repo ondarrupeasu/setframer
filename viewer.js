@@ -286,6 +286,7 @@ function meshStats(root) {
 /** Put a ready-made Object3D in as the set (used by the loader and by the demo studio). */
 export function useSet(root, name) {
   if (state.setRoot) clearEdits();
+  clearLights();
   clearRoles();
   removeTalent();
   if (state.setRoot) { scene.remove(state.setRoot); disposeTree(state.setRoot); }
@@ -302,6 +303,7 @@ export function useSet(root, name) {
   state.floor = null;
   frameObject(root);
   applySun();
+  adoptFileLights(root);
   if (composer) buildComposer();          // the AO pass is bound to this set
   document.body.classList.add('loaded');
   emit('setLoaded', { name, ...meshStats(root), size: state.sceneSize, units: state.units });
@@ -818,8 +820,12 @@ let floorDrag = null;   // { obj, plane, offset, talent }
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || transform.axis) return;
   raycaster.setFromCamera(ndcOf(e), camera);
-  let obj = null, hit = null;
-  if (selected && transform.mode === 'translate' && transform.object) {
+  let obj = null, hit = null, lightEntry = null;
+  if (!pickMode && handles.children.length) {          // a light's dot: select it, and drag it
+    const h = raycaster.intersectObjects(handles.children, false)[0];
+    if (h) { lightEntry = state.lights.find((l) => l.handle === h.object); if (lightEntry) { obj = h.object; hit = h; selectLight(lightEntry.id); } }
+  }
+  if (!obj && selected && transform.mode === 'translate' && transform.object) {
     hit = raycaster.intersectObject(selected, true).find((h) => h.object.isMesh);
     if (hit) obj = selected;
   }
@@ -833,7 +839,7 @@ canvas.addEventListener('pointerdown', (e) => {
   e.stopImmediatePropagation();          // OrbitControls must not orbit while we drag
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y);
   floorDrag = { obj, plane, offset: obj.getWorldPosition(new THREE.Vector3()).sub(hit.point), talent: obj === state.talent?.mesh,
-    x0: e.clientX, y0: e.clientY };
+    light: lightEntry, x0: e.clientX, y0: e.clientY };
   canvas.setPointerCapture(e.pointerId);
 }, { capture: true });
 canvas.addEventListener('pointermove', (e) => {
@@ -850,6 +856,21 @@ canvas.addEventListener('pointermove', (e) => {
     setTalentRelative(Math.max(0.3, cur.dist - dy * perPx * 2), cur.side + dx * perPx);
     return;
   }
+  if (floorDrag.light) {                // a light: slide on its own height; Alt = up / down
+    const L = floorDrag.light, dy = e.clientY - floorDrag.y0;
+    floorDrag.y0 = e.clientY;
+    if (e.altKey) {
+      const r = canvas.getBoundingClientRect(), d = camera.position.distanceTo(L.handle.position);
+      const perPx = (2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / r.height * (e.shiftKey ? SLOW : 1);
+      updateLight(L.id, { pos: [L.pos[0], L.pos[1] - dy * perPx, L.pos[2]] });
+      floorDrag.plane.constant = -L.pos[1];
+      return;
+    }
+    raycaster.setFromCamera(ndcOf(e), camera);
+    const q = raycaster.ray.intersectPlane(floorDrag.plane, new THREE.Vector3());
+    if (q) { q.add(floorDrag.offset); updateLight(L.id, { pos: [q.x, L.pos[1], q.z] }); }
+    return;
+  }
   raycaster.setFromCamera(ndcOf(e), camera);
   const p = raycaster.ray.intersectPlane(floorDrag.plane, new THREE.Vector3());
   if (!p) return;
@@ -861,8 +882,9 @@ canvas.addEventListener('pointermove', (e) => {
 });
 canvas.addEventListener('pointerup', (e) => {
   if (!floorDrag) return;
-  const wasTalent = floorDrag.talent;
+  const wasTalent = floorDrag.talent, wasLight = !!floorDrag.light;
   floorDrag = null;
+  if (wasLight) { canvas.releasePointerCapture(e.pointerId); downAt = null; emit('lights'); return; }
   canvas.releasePointerCapture(e.pointerId);
   downAt = null;                         // a drag is not a pick
   emit(wasTalent ? 'talent' : 'objects');
@@ -944,7 +966,10 @@ canvas.addEventListener('pointerup', (e) => {
   const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   const hit = raycaster.intersectObject(state.setRoot, true).find((h) => h.object.isMesh && isShown(h.object));
-  if (hit) emit('pick', { mode: pickMode, mesh: hit.object, point: hit.point });
+  if (hit) {
+    const normal = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
+    emit('pick', { mode: pickMode, mesh: hit.object, point: hit.point, normal });
+  }
 });
 
 // ---- plain image export -----------------------------------------------------------------------
@@ -1002,6 +1027,7 @@ export function snapshot() {
     env: { ...state.env },
     exposure: renderer.toneMappingExposure,
     sun: { ...state.sun }, ao: { ...state.ao },
+    lights: lightsSnapshot(),
     view: getView(),
     roles: [...state.roles.entries()].map(([uuid, r]) => {
       const m = meshByUuid(uuid);
@@ -1045,6 +1071,7 @@ export function restore(snap) {
   if (snap.exposure) setExposure(snap.exposure);
   if (snap.sun) setSun(snap.sun);
   if (snap.ao) setAO(snap.ao);
+  if (snap.lights) restoreLights(snap.lights);
   if (snap.view) setView(snap.view);
   emit('objects');
 }
@@ -1096,6 +1123,7 @@ export async function renderForegroundPNG(w, h) {
   const saved = { bg: scene.background, clear: renderer.getClearColor(new THREE.Color()), clearA: renderer.getClearAlpha() };
   const swapped = [];
   helpers.visible = false;
+  glows.visible = false;
   showOriginals(true);
   state.setRoot.traverse((o) => {
     if (!o.isMesh || underForeground(o)) return;
@@ -1115,6 +1143,7 @@ export async function renderForegroundPNG(w, h) {
     renderer.setClearColor(saved.clear, saved.clearA);
     showOriginals(false);
     helpers.visible = true;
+    glows.visible = true;
     layout();
   }
   const pixels = async (url) => {   // createImageBitmap, not <img>.decode(): that one stalls in a background tab
@@ -1355,3 +1384,170 @@ function buildSky() {
   skyEnv = pmrem.fromCubemap(skyCube.texture).texture;
 }
 export function setClouds(v) { state.env.clouds = v; if (state.env.background === 'sky') { buildSky(); applyEnv(); } }
+
+// ---- lights placed in the set (street lamps, practicals) ---------------------------------------
+// Real-time lights: they light the geometry and its textures, can cast shadows, and a soft glow
+// sprite makes the lamp itself look on. No bounce light (that is what baking in Blender is for).
+// Lights that come INSIDE the glTF (KHR_lights_punctual) are listed too ("from the file").
+const lightsGroup = new THREE.Group(); scene.add(lightsGroup);
+export const glows = new THREE.Group(); scene.add(glows);
+const handles = new THREE.Group(); helpers.add(handles);
+state.lights = [];
+let lightSeq = 0, selectedLightId = null;
+
+const glowTex = (() => {
+  const c = Object.assign(document.createElement('canvas'), { width: 128, height: 128 }), g = c.getContext('2d');
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.15, 'rgba(255,255,255,0.8)');
+  r.addColorStop(0.4, 'rgba(255,255,255,0.18)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+const candela = (strength) => (strength / 50) ** 2 * 200;  // 50 ≈ a street lamp lighting the pavement 4–5 m below
+
+function newLightObject(type) {
+  const l = type === 'spot' ? new THREE.SpotLight(0xffffff, 1, 0, 0.6, 0.5, 2) : new THREE.PointLight(0xffffff, 1, 0, 2);
+  l.shadow.mapSize.set(1024, 1024);
+  l.shadow.bias = -0.0005; l.shadow.normalBias = 0.02;
+  return l;
+}
+function makeHandle() {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff5a4d, depthTest: false, transparent: true, opacity: 0.9 }));
+  m.renderOrder = 10; m.layers.set(1);
+  return m;
+}
+/** Place light, its target, glow, handle and cone helper from the entry's numbers. */
+function placeEntry(e) {
+  const L = e.light, pos = new THREE.Vector3().fromArray(e.pos);
+  if (!e.fromFile) {
+    L.position.copy(pos);
+    L.color.copy(kelvin(e.kelvin));
+    L.intensity = candela(e.strength);
+    if (L.isSpotLight) {
+      L.angle = THREE.MathUtils.degToRad(e.cone);
+      L.penumbra = e.softness;
+      const t = THREE.MathUtils.degToRad(e.tilt), y = THREE.MathUtils.degToRad(e.yaw);
+      // tilt 0 = straight down; 90 = horizontal towards yaw
+      L.target.position.copy(pos).add(new THREE.Vector3(Math.sin(t) * Math.sin(y), -Math.cos(t), Math.sin(t) * Math.cos(y)));
+      L.target.updateMatrixWorld();
+    }
+  } else {
+    L.intensity = e.baseIntensity * (e.strength / 50) ** 2;
+    L.position.copy(L.parent ? L.parent.worldToLocal(pos.clone()) : pos);   // dragged: e.pos is in world space
+  }
+  L.castShadow = !!e.shadow;
+  L.visible = e.on !== false;
+  L.updateMatrixWorld();
+  const wp = L.getWorldPosition(new THREE.Vector3());
+  e.handle.position.copy(wp);
+  e.glow.visible = !!e.glowOn && L.visible;
+  e.glow.position.copy(wp);
+  const gs = 0.35 + e.strength / 120;
+  e.glow.scale.set(gs, gs, 1);
+  e.glow.material.color.copy(L.color);
+  e.coneHelper?.update();
+}
+function wrapEntry(e) {
+  e.handle = makeHandle();
+  handles.add(e.handle);
+  e.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
+  e.glow.layers.set(1);
+  glows.add(e.glow);
+  if (e.light.isSpotLight) { e.coneHelper = new THREE.SpotLightHelper(e.light, 0xff5a4d); e.coneHelper.visible = false; helpers.add(e.coneHelper); }
+  state.lights.push(e);
+  placeEntry(e);
+  return e;
+}
+/** New light at a clicked point: just off the surface, a spot aiming straight down. */
+export function addLight(point, normal, opts = {}) {
+  const p = new THREE.Vector3().copy(point).addScaledVector(normal ?? new THREE.Vector3(0, -1, 0), 0.12);
+  const e = { id: ++lightSeq, name: `Light ${lightSeq}`, type: opts.type || 'spot', pos: p.toArray(),
+    kelvin: 2700, strength: 50, cone: 40, softness: 0.5, tilt: 0, yaw: 0, shadow: false, glowOn: true, ...opts };
+  e.light = newLightObject(e.type);
+  lightsGroup.add(e.light);
+  if (e.light.isSpotLight) lightsGroup.add(e.light.target);
+  wrapEntry(e);
+  selectLight(e.id);
+  emit('lights');
+  return e;
+}
+export function updateLight(id, patch) {
+  const e = state.lights.find((l) => l.id === id);
+  if (!e) return;
+  if (patch.type && patch.type !== e.type && !e.fromFile) {   // spot ↔ bulb: swap the light object
+    const old = e.light;
+    lightsGroup.remove(old); if (old.target) lightsGroup.remove(old.target); old.dispose();
+    e.coneHelper && (helpers.remove(e.coneHelper), e.coneHelper.dispose(), e.coneHelper = null);
+    e.light = newLightObject(patch.type);
+    lightsGroup.add(e.light); if (e.light.isSpotLight) { lightsGroup.add(e.light.target); e.coneHelper = new THREE.SpotLightHelper(e.light, 0xff5a4d); helpers.add(e.coneHelper); }
+  }
+  Object.assign(e, patch);
+  placeEntry(e);
+  if (e.coneHelper) e.coneHelper.visible = e.id === selectedLightId;
+  emit('lights');
+}
+export function removeLight(id) {
+  const e = state.lights.find((l) => l.id === id);
+  if (!e) return;
+  if (e.fromFile) { updateLight(id, { on: false }); return; }   // lights of the file are switched off, not deleted
+  lightsGroup.remove(e.light); if (e.light.target) lightsGroup.remove(e.light.target); e.light.dispose();
+  handles.remove(e.handle); e.handle.geometry.dispose();
+  glows.remove(e.glow); e.glow.material.dispose();
+  if (e.coneHelper) { helpers.remove(e.coneHelper); e.coneHelper.dispose(); }
+  state.lights.splice(state.lights.indexOf(e), 1);
+  if (selectedLightId === id) selectedLightId = null;
+  emit('lights');
+}
+export function duplicateLight(id) {
+  const e = state.lights.find((l) => l.id === id);
+  if (!e || e.fromFile) return null;
+  const { right } = camAxes();   // a copy 1.5 m to the right as seen from the camera, ready to drag
+  const p = new THREE.Vector3().fromArray(e.pos).addScaledVector(right, 1.5);
+  const { id: _i, name: _n, light: _l, handle: _h, glow: _g, coneHelper: _c, pos: _p, ...props } = e;
+  return addLight(p, new THREE.Vector3(), props);
+}
+export function selectLight(id) {
+  selectedLightId = id;
+  for (const e of state.lights) {
+    e.handle.material.color.set(e.id === id ? 0xffffff : 0xff5a4d);
+    if (e.coneHelper) { e.coneHelper.visible = e.id === id; e.coneHelper.update(); }
+  }
+  emit('lights');
+}
+export const getSelectedLightId = () => selectedLightId;
+function clearLights() {
+  for (const e of [...state.lights]) {
+    if (e.fromFile) { handles.remove(e.handle); glows.remove(e.glow); if (e.coneHelper) helpers.remove(e.coneHelper); state.lights.splice(state.lights.indexOf(e), 1); }
+    else removeLight(e.id);
+  }
+  state.lights = []; selectedLightId = null;
+  emit('lights');
+}
+function adoptFileLights(root) {
+  root.traverse((o) => {
+    if (!o.isLight) return;
+    o.updateMatrixWorld();
+    wrapEntry({ id: ++lightSeq, name: o.name || `File light ${lightSeq}`, fromFile: true, light: o, path: pathOf(o),
+      type: o.isSpotLight ? 'spot' : 'point', pos: o.getWorldPosition(new THREE.Vector3()).toArray(),
+      baseIntensity: o.intensity, strength: 50, shadow: false, glowOn: false, on: true });
+  });
+  emit('lights');
+}
+function lightsSnapshot() {
+  return state.lights.map((e) => e.fromFile
+    ? { fromFile: true, path: e.path, strength: e.strength, shadow: e.shadow, glowOn: e.glowOn, on: e.on }
+    : { type: e.type, pos: e.pos, kelvin: e.kelvin, strength: e.strength, cone: e.cone, softness: e.softness,
+        tilt: e.tilt, yaw: e.yaw, shadow: e.shadow, glowOn: e.glowOn, name: e.name });
+}
+function restoreLights(list) {
+  for (const l of list) {
+    if (l.fromFile) {
+      const e = state.lights.find((x) => x.fromFile && x.path === l.path);
+      if (e) updateLight(e.id, { strength: l.strength, shadow: l.shadow, glowOn: l.glowOn, on: l.on });
+    } else {
+      const e = addLight(new THREE.Vector3().fromArray(l.pos), new THREE.Vector3(), { ...l });
+      e.pos = l.pos; placeEntry(e);
+    }
+  }
+  selectLight(null);
+}

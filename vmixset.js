@@ -11,7 +11,7 @@
 // of the presenter (a desk, a column) cuts the map exactly like it cuts the picture.
 import * as THREE from 'three';
 import { zlibSync, zipSync, strToU8 } from 'three/addons/libs/fflate.module.js';
-import { renderer, scene, camera, helpers, state, meshByUuid, layout, renderPNG, renderForegroundPNG,
+import { renderer, scene, camera, helpers, glows, state, meshByUuid, layout, renderPNG, renderForegroundPNG,
   UV_GLSL, uvUniforms, setUvUniforms } from './viewer.js';
 
 // ---- PNG writer (16-bit RGBA, Sub filter) -------------------------------------------------------
@@ -91,6 +91,7 @@ function renderUVMap(target, opts, w, h, ss) {
   try {
     scene.background = null;
     helpers.visible = false;
+    glows.visible = false;                 // lamp glows would paint into the UV map
     // 1) the whole set, depth only. Glass / see-through materials don't occlude.
     state.setRoot.traverse((o) => {
       if (!o.isMesh) return;
@@ -127,6 +128,7 @@ function renderUVMap(target, opts, w, h, ss) {
     renderer.autoClear = saved.autoClear;
     scene.background = saved.bg;
     helpers.visible = saved.helpers;
+    glows.visible = true;
     rt.dispose();
   }
 }

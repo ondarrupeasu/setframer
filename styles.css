@@ -125,3 +125,7 @@ details.adv[open] > summary::before { transform: rotate(90deg); color: var(--ce-
 details.adv > summary:hover { color: var(--ce-text); }
 /* rotate / mirror buttons of the screens only with Advanced open */
 body:not(.uvfix) .role .ops button[data-op="rot"], body:not(.uvfix) .role .ops button[data-op="flipU"], body:not(.uvfix) .role .ops button[data-op="flipV"] { display: none; }
+
+#lightList .role { cursor: pointer; }
+#lightList .role.sel { border-color: var(--ce-accent); background: var(--ce-accent-wash); }
+#lightList .swatch { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--ce-line); }

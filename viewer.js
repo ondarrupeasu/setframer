@@ -174,6 +174,7 @@ renderer.setAnimationLoop(() => {
   fly(dt);
   controls.update();
   if (state.talent) faceCamera(state.talent.mesh);
+  for (const h of handles.children) h.scale.setScalar(Math.max(0.05, camera.position.distanceTo(h.position) * 0.33 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / camera.zoom));   // a few pixels, near or far
   if (state.output) renderOutput();
   draw();
   syncTalentLive();
@@ -1476,14 +1477,26 @@ function wrapEntry(e) {
   return e;
 }
 /**
- * New light at a clicked point: a few cm INSIDE the surface clicked (the bulb is inside the lamp),
- * a spot aiming straight down. The mesh clicked stops casting shadows, so the lamp's own shell
- * does not block its light.
+ * New light where a lamp was clicked: just BELOW that piece (where the bulb is), a spot aiming
+ * straight down. Not inside the surface: a light a few cm inside a wall burns a white hotspot and
+ * blows up the texture's compression noise into coloured specks. The piece clicked stops casting
+ * shadows, so the lamp's own shell does not block its light.
  */
 export function addLight(point, normal, opts = {}, owner = null) {
-  const p = new THREE.Vector3().copy(point).addScaledVector(normal ?? new THREE.Vector3(), -0.05);
+  const p = new THREE.Vector3().copy(point);
+  if (owner?.isMesh) {
+    // the underside of the lamp right below the click (≤ 1.5 m down), else just below the click
+    const down = new THREE.Raycaster(p.clone().add(new THREE.Vector3(0, 0.01, 0)), new THREE.Vector3(0, -1, 0), 0, 1.5);
+    const hits = down.intersectObject(owner, false);
+    const last = hits.length ? hits[hits.length - 1].point : p;
+    p.copy(last).add(new THREE.Vector3(0, -0.06, 0));
+    if (normal && normal.lengthSq() > 0) p.addScaledVector(normal, 0.03);   // and off the surface: never flush with a pane or wall
+  } else if (normal && normal.lengthSq() > 0) {
+    p.addScaledVector(normal, 0.06);
+  }
   const e = { id: ++lightSeq, name: `Light ${lightSeq}`, type: opts.type || 'spot', pos: p.toArray(),
     kelvin: 2700, strength: 50, cone: 40, softness: 0.5, tilt: 0, yaw: 0, shadow: false, glowSize: 20, ...opts };
+  e.pos = opts.pos ?? p.toArray();
   if (owner?.isMesh) { e.owner = owner; e.ownerCast = owner.castShadow; owner.castShadow = false; }
   e.light = newLightObject(e.type);
   lightsGroup.add(e.light);

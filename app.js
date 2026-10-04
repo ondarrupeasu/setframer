@@ -328,7 +328,12 @@ function renderRoles() {
     const row = document.createElement('div'); row.className = 'role';
     row.innerHTML = `<span class="tag" style="background:#ff5a4d">Talent</span><span class="nm">presenter card</span>
       <span class="ops"><button data-op="del" title="Remove">✕</button></span>`;
-    row.querySelector('.ops').onclick = () => V.removeTalent();
+    row.querySelector('.ops').onclick = () => {
+      V.removeTalent();
+      // the camera was shown ON the presenter: with no presenter it shows nowhere → switch it off
+      // (and the camera's light with it). In Full frame mode it keeps running.
+      if (V.live.video && segValue('segLiveMode') === 'card') V.stopLiveCamera();
+    };
     list.appendChild(row);
   }
   $('talentRow').hidden = !V.state.talent;

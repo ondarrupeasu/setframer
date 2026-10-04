@@ -1147,7 +1147,8 @@ export async function startLiveCamera(deviceId) {
   emit('live', { on: true, label: t.label, ...t.getSettings() });
 }
 export function stopLiveCamera() {
-  live.stream?.getTracks().forEach((t) => t.stop());
+  live.stream?.getTracks().forEach((t) => t.stop());   // stopping every track is what turns the camera light off
+  if (live.video) { live.video.pause(); live.video.srcObject = null; }
   live.texture?.dispose();
   Object.assign(live, { video: null, stream: null, texture: null, show: false });
   emit('live', { on: false });

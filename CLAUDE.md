@@ -83,7 +83,8 @@ vMix**. Los alumnos de Tartanga ya ponen el fondo del croma con vMix → esa es 
 ## Deploy
 **En vivo: https://setframer.cinemafilmak.com** · repo público `ondarrupeasu/setframer` · GitHub Pages desde `main`
 (raíz), `CNAME` en el repo, HTTPS forzado (cert. aprobado 4-oct-2026). Push a `main` = publicado. Al cambiar ficheros
-del shell, subir `CACHE` en `sw.js`. `samples/` (sets de Sketchfab) y `setframer/` (restos PySide6) no se suben.
+del shell, subir `CACHE` en `sw.js`. OJO: Pages manda `max-age=600`; el SW pide todo con `cache:'no-cache'` (revalida
+por ETag) — sin eso, tras un deploy se mezclaban módulos viejos y nuevos durante 10 min (fallos raros «que se arreglan solos»). `samples/` (sets de Sketchfab) y `setframer/` (restos PySide6) no se suben.
 
 ## Pendiente / a verificar en vMix real (tvstudio)
 - Que vMix respete la **cobertura parcial** (alpha intermedio) del UV map en los bordes.

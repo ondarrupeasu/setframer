@@ -69,8 +69,13 @@ vMix**. Los alumnos de Tartanga ya ponen el fondo del croma con vMix → esa es 
 - **`tools/simulate_vmix.py <carpeta-set>`** compone como vMix (cartas de ajuste + silueta de presentador) → valida
   orientación/oclusión sin vMix: `uv run --with numpy --with pillow --with pypng tools/simulate_vmix.py <dir>`.
 
+## Deploy
+**En vivo: https://setframer.cinemafilmak.com** · repo público `ondarrupeasu/setframer` · GitHub Pages desde `main`
+(raíz), `CNAME` en el repo, HTTPS forzado (cert. aprobado 4-oct-2026). Push a `main` = publicado. Al cambiar ficheros
+del shell, subir `CACHE` en `sw.js`. `samples/` (sets de Sketchfab) y `setframer/` (restos PySide6) no se suben.
+
 ## Pendiente / a verificar en vMix real (tvstudio)
 - Que vMix respete la **cobertura parcial** (alpha intermedio) del UV map en los bordes.
 - Semántica de `x/y` de `<zoom>`; si vMix usa la resolución completa del fondo 4K al hacer zoom en proyecto HD.
-- Deploy (GitHub Pages + CNAME, como KeyLab), iconos PNG, idiomas (eu/es/en como SoundLab?).
+- Iconos PNG para la PWA, idiomas (eu/es/en como SoundLab?).
 - Restos del arranque PySide6 a borrar a mano: `setframer/`, `.venv/`.

@@ -24,10 +24,17 @@ function db() {
 async function tx(store, mode, fn) {
   const d = await db();
   return new Promise((res, rej) => {
-    const t = d.transaction(store, mode), req = fn(t.objectStore(store));
-    t.oncomplete = () => res(req?.result);
-    t.onerror = () => rej(t.error);
-    t.onabort = () => rej(t.error || new Error('Storage aborted (browser storage full?)'));
+    let req;
+    try {
+      const t = d.transaction(store, mode);
+      req = fn(t.objectStore(store));
+      // The REQUEST carries the real reason; the transaction's own error can still be null here
+      // (that is how "Could not save: null" happened).
+      const why = () => req?.error || t.error || new Error('The browser refused to store the project (storage full or blocked?)');
+      t.oncomplete = () => res(req?.result);
+      t.onerror = () => rej(why());
+      t.onabort = () => rej(why());
+    } catch (err) { rej(err); }   // e.g. DataCloneError, thrown synchronously by put()
   });
 }
 const get = (store, id) => tx(store, 'readonly', (s) => s.get(id));
@@ -42,11 +49,12 @@ export async function saveProject({ id, name, data, thumb, source, hdriFile }) {
   const sig = signature(source, hdriFile);
   const old = await get('files', id);
   if (!old || old.sig !== sig) {
-    await tx('files', 'readwrite', (s) => s.put({
-      id, sig,
-      set: source?.kind === 'files' ? source.files.map((f) => ({ name: f.name, relPath: f.relPath || f.webkitRelativePath || f.name, blob: f })) : null,
-      hdri: hdriFile ? { name: hdriFile.name, blob: hdriFile } : null,
-    }));
+    // Plain bytes (ArrayBuffer), not File/Blob objects: Safari refuses some Blobs in IndexedDB
+    // with an empty error. Read everything BEFORE opening the transaction (it must not wait).
+    const bytes = async (f) => ({ name: f.name, relPath: f.relPath || f.webkitRelativePath || f.name, type: f.type, data: await f.arrayBuffer() });
+    const set = source?.kind === 'files' ? await Promise.all(source.files.map(bytes)) : null;
+    const hdri = hdriFile ? await bytes(hdriFile) : null;
+    await tx('files', 'readwrite', (s) => s.put({ id, sig, set, hdri }));
   }
   const prev = await get('projects', id);
   await tx('projects', 'readwrite', (s) => s.put({ id, name, updated: Date.now(), thumb: thumb ?? prev?.thumb ?? null, data }));
@@ -65,7 +73,8 @@ export async function loadProject(id) {
   return { record, files: revive(f) };
 }
 function revive(f) {
-  const toFile = (x) => { const file = new File([x.blob], x.name); file.relPath = x.relPath || x.name; return file; };
+  // x.data = bytes (current format); x.blob = Blob/File (projects saved before the Safari fix)
+  const toFile = (x) => { const file = new File([x.data ?? x.blob], x.name, { type: x.type || '' }); file.relPath = x.relPath || x.name; return file; };
   return { set: f?.set ? f.set.map(toFile) : null, hdri: f?.hdri ? toFile(f.hdri) : null };
 }
 

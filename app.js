@@ -72,7 +72,10 @@ function enhanceNumbers(root = document) {
 
 // ---- busy / messages --------------------------------------------------------------------------
 V.events.addEventListener('busy', (e) => { $('busy').hidden = !e.detail.msg; $('busy').textContent = e.detail.msg; });
-function fail(what, err) { console.error(err); alert(`${what}: ${err?.message || err}`); }
+function fail(what, err) {
+  console.error(err);
+  alert(`${what}: ${err?.message || err?.name || (err == null ? 'the browser gave no reason' : err)}`);
+}
 
 // ---- opening files ----------------------------------------------------------------------------
 async function openSet(files) {
@@ -338,11 +341,13 @@ function showTalentPos() {
   if (!t) return;
   if (document.activeElement !== $('talDist')) $('talDist').value = fmt(t.dist, 2);
   if (document.activeElement !== $('talSide')) $('talSide').value = fmt(t.side, 2);
+  if (document.activeElement !== $('talRaise')) $('talRaise').value = fmt(t.raise, 2);
 }
 const moveTalent = () => V.setTalentRelative(Math.max(0.3, +$('talDist').value || 3), +$('talSide').value || 0);
 $('talDist').onchange = moveTalent;
 $('talSide').onchange = moveTalent;
-$('btnTalCenter').onclick = () => V.centerTalent();
+$('talRaise').onchange = () => V.setTalentRaise(+$('talRaise').value || 0);
+$('btnTalCenter').onclick = () => { V.centerTalent(); V.setTalentRaise(0); };
 $('btnCenterTalent').onclick = () => { if (!V.state.setRoot) return fail('Presenter', new Error('Load a set first')); V.centerTalent(); };
 slider('talentH', (v) => V.setTalentHeight(v / 100), (v) => `${fmt(v / 100)} m`);
 

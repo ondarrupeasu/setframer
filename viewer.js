@@ -605,7 +605,7 @@ function camAxes() {
 export function talentInfo() {
   if (!state.talent) return null;
   const { fwd, right } = camAxes(), d = new THREE.Vector3().subVectors(state.talent.mesh.position, camera.position);
-  return { dist: d.dot(fwd), side: d.dot(right), frameH: state.talent.frameH };
+  return { dist: d.dot(fwd), side: d.dot(right), raise: state.talent.mesh.position.y - state.floorY, frameH: state.talent.frameH };
 }
 export function setTalentRelative(dist, side) {
   if (!state.talent) return;
@@ -613,6 +613,12 @@ export function setTalentRelative(dist, side) {
   const y = m.position.y;
   m.position.copy(camera.position).addScaledVector(fwd, dist).addScaledVector(right, side);
   m.position.y = y;
+  emit('talent');
+}
+/** Height of the presenter's feet above the set floor (a riser, a step). */
+export function setTalentRaise(h) {
+  if (!state.talent) return;
+  state.talent.mesh.position.y = state.floorY + h;
   emit('talent');
 }
 /** Put the presenter (creating the card if needed) in the middle of the shot, standing on the floor. */
@@ -784,6 +790,7 @@ canvas.addEventListener('pointermove', (e) => {
     const perPx = (2 * Math.max(0.5, cur.dist) * Math.tan(hfov / 2)) / r.width * (e.shiftKey ? SLOW : 1);
     const dx = e.clientX - floorDrag.x0, dy = e.clientY - floorDrag.y0;   // since the last move: Shift can change mid-drag
     floorDrag.x0 = e.clientX; floorDrag.y0 = e.clientY;
+    if (e.altKey) { setTalentRaise(cur.raise - dy * perPx); return; }   // Alt: up/down = raise / lower (riser, step)
     setTalentRelative(Math.max(0.3, cur.dist - dy * perPx * 2), cur.side + dx * perPx);
     return;
   }

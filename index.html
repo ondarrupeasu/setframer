@@ -175,10 +175,11 @@
         <div class="grid3">
           <label title="How far in front of the camera">Distance<input class="ce-inp num" id="talDist" type="number" step="0.1" min="0.3"><span class="unit">m</span></label>
           <label title="Left (−) / right (+) of the centre of the shot">Sideways<input class="ce-inp num" id="talSide" type="number" step="0.05"><span class="unit">m</span></label>
-          <label>&nbsp;<button class="ce-btn ce-ghost sm" id="btnTalCenter" title="Back to the centre of the shot">Centre</button></label>
+          <label title="Feet above the set floor — for a riser or a step. Or drag the card with Alt held.">Raise<input class="ce-inp num" id="talRaise" type="number" step="0.05"><span class="unit">m</span></label>
         </div>
+        <button class="ce-btn ce-ghost sm gap-top" id="btnTalCenter" title="Back to the centre of the shot, on the floor">Back to centre</button>
         <div class="field"><span>Presenter frame</span><div class="ce-slider"><input type="range" id="talentH" min="50" max="600" value="220"><span class="ce-val" id="talentHV">2.20 m</span></div></div>
-        <div class="hint">Drag the orange card on the floor, or type its distance. Frame = height the REAL camera covers at the presenter (≈2.2 m = full body). The keyed camera is mapped onto this card.</div>
+        <div class="hint">Drag the orange card: sideways, and up/down = further/closer (hold Alt to raise it instead). Frame = height the REAL camera covers at the presenter (≈2.2 m = full body). The keyed camera is mapped onto this card.</div>
       </div>
     </div>
 

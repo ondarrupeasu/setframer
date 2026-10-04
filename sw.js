@@ -1,6 +1,6 @@
 /* SetFrameR service worker — network-first, cache as offline fallback.
    Bump CACHE when the shell changes. vendor/ (three.js) is cached on first use. */
-const CACHE = 'setframer-v4';
+const CACHE = 'setframer-v5';
 const ASSETS = ['./', './index.html', './output.html', './casa-estilo.css', './styles.css', './app.js', './viewer.js',
   './vmixset.js', './project.js', './demo.js', './lenses.json', './manifest.webmanifest', './icon.svg', './report.js',
   './vendor/three/build/three.module.js', './vendor/three/build/three.core.js'];

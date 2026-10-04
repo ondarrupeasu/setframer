@@ -342,11 +342,17 @@ function showTalentPos() {
   if (document.activeElement !== $('talDist')) $('talDist').value = fmt(t.dist, 2);
   if (document.activeElement !== $('talSide')) $('talSide').value = fmt(t.side, 2);
   if (document.activeElement !== $('talRaise')) $('talRaise').value = fmt(t.raise, 2);
+  // just show it (no input event: that would set it again and loop)
+  const tt = $('talTurn'); tt.value = Math.round(t.turn);
+  tt.style.setProperty('--p', `${(100 * (tt.value - tt.min)) / (tt.max - tt.min)}%`);
+  $('talTurnV').textContent = `${Math.round(t.turn)}°`;
 }
 const moveTalent = () => V.setTalentRelative(Math.max(0.3, +$('talDist').value || 3), +$('talSide').value || 0);
 $('talDist').onchange = moveTalent;
 $('talSide').onchange = moveTalent;
 $('talRaise').onchange = () => V.setTalentRaise(+$('talRaise').value || 0);
+slider('talTurn', (v) => V.setTalentTurn(v), (v) => `${v}°`);
+$('talTurn').ondblclick = () => V.setTalentTurn(0);
 $('btnTalCenter').onclick = () => { V.centerTalent(); V.setTalentRaise(0); };
 $('btnCenterTalent').onclick = () => { if (!V.state.setRoot) return fail('Presenter', new Error('Load a set first')); V.centerTalent(); };
 slider('talentH', (v) => V.setTalentHeight(v / 100), (v) => `${fmt(v / 100)} m`);

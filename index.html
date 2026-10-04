@@ -177,6 +177,7 @@
           <label title="Left (−) / right (+) of the centre of the shot">Sideways<input class="ce-inp num" id="talSide" type="number" step="0.05"><span class="unit">m</span></label>
           <label title="Feet above the set floor — for a riser or a step. Or drag the card with Alt held.">Raise<input class="ce-inp num" id="talRaise" type="number" step="0.05"><span class="unit">m</span></label>
         </div>
+        <div class="field" title="Turn the presenter left/right. 0° = square to the camera, like the real one. It is a flat picture: keep it small (±15°) or the presenter looks squeezed. Double-click = 0°."><span>Turn</span><div class="ce-slider"><input type="range" id="talTurn" min="-60" max="60" step="1" value="0"><span class="ce-val" id="talTurnV">0°</span></div></div>
         <button class="ce-btn ce-ghost sm gap-top" id="btnTalCenter" title="Back to the centre of the shot, on the floor">Back to centre</button>
         <div class="field"><span>Presenter frame</span><div class="ce-slider"><input type="range" id="talentH" min="50" max="600" value="220"><span class="ce-val" id="talentHV">2.20 m</span></div></div>
         <div class="hint">Drag the orange card: sideways, and up/down = further/closer (hold Alt to raise it instead). Frame = height the REAL camera covers at the presenter (≈2.2 m = full body). The keyed camera is mapped onto this card.</div>

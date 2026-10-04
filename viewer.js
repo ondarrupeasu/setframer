@@ -605,7 +605,7 @@ function camAxes() {
 export function talentInfo() {
   if (!state.talent) return null;
   const { fwd, right } = camAxes(), d = new THREE.Vector3().subVectors(state.talent.mesh.position, camera.position);
-  return { dist: d.dot(fwd), side: d.dot(right), raise: state.talent.mesh.position.y - state.floorY, frameH: state.talent.frameH };
+  return { dist: d.dot(fwd), side: d.dot(right), raise: state.talent.mesh.position.y - state.floorY, turn: state.talent.turn || 0, frameH: state.talent.frameH };
 }
 export function setTalentRelative(dist, side) {
   if (!state.talent) return;
@@ -642,7 +642,15 @@ export function removeTalent() {
   emit('talent');
 }
 function faceCamera(mesh) {
-  mesh.rotation.set(0, Math.atan2(camera.position.x - mesh.position.x, camera.position.z - mesh.position.z), 0);
+  // Always square to the camera (that is how the real camera sees the presenter), plus an optional
+  // turn: the card is a flat picture, so a big turn squeezes the presenter — hence the ±60° limit.
+  const turn = THREE.MathUtils.degToRad(state.talent?.turn || 0);
+  mesh.rotation.set(0, Math.atan2(camera.position.x - mesh.position.x, camera.position.z - mesh.position.z) + turn, 0);
+}
+export function setTalentTurn(deg) {
+  if (!state.talent) return;
+  state.talent.turn = THREE.MathUtils.clamp(deg, -60, 60);
+  emit('talent');
 }
 
 // ---- props: select, hide, move (softboxes, cameras, people left in a downloaded set) ----------
@@ -949,7 +957,7 @@ export function snapshot() {
       const m = meshByUuid(uuid);
       return m && { path: pathOf(m), role: r.role, rot: r.rot, flipU: r.flipU, flipV: r.flipV };
     }).filter(Boolean),
-    talent: state.talent ? { pos: state.talent.mesh.position.toArray(), frameH: state.talent.frameH } : null,
+    talent: state.talent ? { pos: state.talent.mesh.position.toArray(), frameH: state.talent.frameH, turn: state.talent.turn || 0 } : null,
     hidden: hiddenObjects().map(pathOf),
     foreground: foregroundObjects().map(pathOf),
     moved: [...edits.moved].map((uuid) => state.setRoot.getObjectByProperty('uuid', uuid)).filter(Boolean)
@@ -979,7 +987,10 @@ export function restore(snap) {
     const m = byPath(r.path);
     if (m?.isMesh) setRole(m, r.role, { rot: r.rot, flipU: r.flipU, flipV: r.flipV });
   }
-  if (snap.talent) placeTalent(new THREE.Vector3().fromArray(snap.talent.pos), snap.talent.frameH);
+  if (snap.talent) {
+    placeTalent(new THREE.Vector3().fromArray(snap.talent.pos), snap.talent.frameH);
+    if (snap.talent.turn) setTalentTurn(snap.talent.turn);
+  }
   if (snap.env) setEnv(snap.env);
   if (snap.exposure) setExposure(snap.exposure);
   if (snap.view) setView(snap.view);

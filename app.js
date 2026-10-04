@@ -651,6 +651,7 @@ $('btnLive').onclick = async () => {
   if (V.live.video) { V.stopLiveCamera(); return; }
   try {
     await V.startLiveCamera($('liveDevice').value || undefined);
+    if (!V.live.stream) return;                    // superseded by another click meanwhile
     const id = V.live.stream.getVideoTracks()[0].getSettings().deviceId;
     await listCameras(id);                         // labels only appear after permission
   } catch (err) { fail('Could not open the camera', err); }

@@ -581,11 +581,34 @@ function clearRoles() {
 // real-world height the REAL camera frames at the presenter (≈2.2 m = full body with headroom);
 // the width follows the input's 16:9. It is a helper (never rendered into the background).
 const TALENT_ASPECT = 16 / 9;
+// The card IS the real camera's whole frame, so with a matched camera it fills the shot: a tinted
+// rectangle told nothing (and hid every turn). Show a 1.75 m person standing in it instead — where
+// the presenter will be, how big, which way it turns — and only the frame's outline.
+const PERSON_H = 1.75;
+const cardCanvas = Object.assign(document.createElement('canvas'), { width: 576, height: 324 });
+const cardTex = new THREE.CanvasTexture(cardCanvas);
+cardTex.colorSpace = THREE.SRGBColorSpace;
+function drawCard(frameH) {
+  const g = cardCanvas.getContext('2d'), W = cardCanvas.width, H = cardCanvas.height;
+  g.clearRect(0, 0, W, H);
+  const h = Math.min(0.98, PERSON_H / frameH) * H, cx = W / 2, feet = H, u = h / 1.75;   // u = pixels per "person metre"
+  g.fillStyle = 'rgba(255,90,77,0.55)'; g.strokeStyle = 'rgba(255,138,125,0.95)'; g.lineWidth = 2;
+  const head = 0.12 * u;
+  g.beginPath(); g.arc(cx, feet - h + head, head, 0, Math.PI * 2); g.fill(); g.stroke();
+  const shoulderY = feet - h + 2.15 * head, hipY = feet - 0.85 * u;
+  g.beginPath(); g.roundRect(cx - 0.23 * u, shoulderY, 0.46 * u, hipY - shoulderY, 0.09 * u); g.fill(); g.stroke();   // torso
+  g.beginPath(); g.roundRect(cx - 0.2 * u, hipY - 0.02 * u, 0.17 * u, feet - hipY, 0.05 * u); g.fill(); g.stroke();     // legs
+  g.beginPath(); g.roundRect(cx + 0.03 * u, hipY - 0.02 * u, 0.17 * u, feet - hipY, 0.05 * u); g.fill(); g.stroke();
+  g.beginPath(); g.roundRect(cx - 0.33 * u, shoulderY + 0.03 * u, 0.09 * u, 0.62 * u, 0.04 * u); g.fill(); g.stroke(); // arms
+  g.beginPath(); g.roundRect(cx + 0.24 * u, shoulderY + 0.03 * u, 0.09 * u, 0.62 * u, 0.04 * u); g.fill(); g.stroke();
+  cardTex.needsUpdate = true;
+}
+
 export function placeTalent(point, frameH = 2.2) {
   removeTalent();
   const geo = new THREE.PlaneGeometry(1, 1);
   geo.translate(0, 0.5, 0);    // origin at the bottom edge (feet)
-  const mat = new THREE.MeshBasicMaterial({ color: 0xff5a4d, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
+  const mat = new THREE.MeshBasicMaterial({ map: cardTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
   const mesh = new THREE.Mesh(geo, mat);
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xff5a4d }));
   mesh.add(edges);
@@ -632,6 +655,7 @@ export function setTalentHeight(h) {
   if (!state.talent) return;
   state.talent.frameH = h;
   state.talent.mesh.scale.set(h * TALENT_ASPECT, h, 1);
+  drawCard(h);
   emit('talent');
 }
 export function removeTalent() {
@@ -1131,11 +1155,19 @@ function syncTalentLive() {
 const liveScene = new THREE.Scene(), liveCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 liveScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), liveMat));
 
+// Every camera stream ever opened is tracked, and stopping stops ALL of them: a second Connect
+// while the permission prompt is up (or a quick source switch) used to orphan a stream, and an
+// orphaned stream keeps the camera — and its green light — on.
+const openStreams = new Set();
+let startSeq = 0;
 export async function startLiveCamera(deviceId) {
   stopLiveCamera();
+  const seq = ++startSeq;
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false,
   });
+  openStreams.add(stream);
+  if (seq !== startSeq) { stream.getTracks().forEach((t) => t.stop()); openStreams.delete(stream); return; }   // superseded meanwhile
   const video = Object.assign(document.createElement('video'), { muted: true, playsInline: true, srcObject: stream });
   await video.play();
   live.video = video; live.stream = stream;
@@ -1147,7 +1179,10 @@ export async function startLiveCamera(deviceId) {
   emit('live', { on: true, label: t.label, ...t.getSettings() });
 }
 export function stopLiveCamera() {
-  live.stream?.getTracks().forEach((t) => t.stop());   // stopping every track is what turns the camera light off
+  startSeq++;                                          // a getUserMedia still pending will stop itself on arrival
+  for (const st of openStreams) st.getTracks().forEach((t) => t.stop());   // stopping every track turns the light off
+  openStreams.clear();
+  live.stream?.getTracks().forEach((t) => t.stop());
   if (live.video) { live.video.pause(); live.video.srcObject = null; }
   live.texture?.dispose();
   Object.assign(live, { video: null, stream: null, texture: null, show: false });
@@ -1177,3 +1212,6 @@ export function sampleLive(clientX, clientY) {
   const d = g.getImageData(0, 0, 1, 1).data;
   return '#' + [d[0], d[1], d[2]].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
+
+// Closing or navigating away: release the camera explicitly (some browsers keep it a moment longer).
+window.addEventListener('pagehide', () => stopLiveCamera());

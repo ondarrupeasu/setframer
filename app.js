@@ -171,7 +171,8 @@ function slider(id, fn, show) {
   };
   el.oninput = upd; upd();
 }
-seg('segBg', (v) => V.setEnv({ background: v }));
+seg('segBg', (v) => { V.setEnv({ background: v }); $('cloudRow').hidden = v !== 'sky'; });
+slider('clouds', (v) => V.setClouds(v / 100), (v) => `${v}%`);
 $('bgColor').oninput = (e) => {
   V.setEnv({ color: e.target.value, background: 'color' });
   $('segBg').querySelectorAll('button').forEach((b) => b.classList.toggle('ce-on', b.dataset.v === 'color'));
@@ -181,6 +182,32 @@ slider('envInt', (v) => V.setEnv({ intensity: v / 100 }), (v) => fmt(v / 100));
 slider('envBlur', (v) => V.setEnv({ blur: v / 100 }), (v) => fmt(v / 100));
 slider('exposure', (v) => V.setExposure(2 ** (v / 100)), (v) => `${v >= 0 ? '+' : ''}${fmt(v / 100, 1)} EV`);
 seg('segTone', V.setToneMapping);
+
+// Sun & ambient occlusion (off by default: TV sets usually have their light baked in)
+function onOff(id, fn) {
+  const el = $(id);
+  el.parentElement.onclick = (e) => { e.preventDefault(); const v = !el.classList.contains('ce-on'); el.classList.toggle('ce-on', v); fn(v); };
+}
+const setSwitch = (id, on) => $(id).classList.toggle('ce-on', !!on);
+onOff('swSun', (on) => { $('sunCtl').hidden = !on; V.setSun({ on }); });
+onOff('swAO', (on) => { $('aoCtl').hidden = !on; V.setAO({ on }); });
+slider('sunAz', (v) => V.setSun({ azimuth: v }), (v) => `${v}°`);
+slider('sunEl', (v) => V.setSun({ elevation: v }), (v) => `${v}°`);
+slider('sunInt', (v) => V.setSun({ intensity: v / 10 }), (v) => fmt(v / 10, 1));
+slider('sunK', (v) => V.setSun({ kelvin: v }), (v) => `${v} K`);
+slider('aoStr', (v) => V.setAO({ strength: v / 100 }), (v) => fmt(v / 100));
+slider('aoRad', (v) => V.setAO({ radius: v / 100 }), (v) => `${fmt(v / 100)} m`);
+/** Show the sun / AO state from a restored project (V.restore applies it to the scene). */
+function showLightUI(sun, ao) {
+  if (sun) {
+    setSwitch('swSun', sun.on); $('sunCtl').hidden = !sun.on;
+    for (const [id, v] of [['sunAz', sun.azimuth], ['sunEl', sun.elevation], ['sunInt', sun.intensity * 10], ['sunK', sun.kelvin]]) setSlider(id, v);
+  }
+  if (ao) {
+    setSwitch('swAO', ao.on); $('aoCtl').hidden = !ao.on;
+    setSlider('aoStr', ao.strength * 100); setSlider('aoRad', ao.radius * 100);
+  }
+}
 
 // ---- camera / lens ----------------------------------------------------------------------------
 const SENSORS = [   // horizontal width in mm (16:9 recording area where it matters)
@@ -486,6 +513,7 @@ async function applyProject(data, files) {
     else { V.clearHDRI(); $('btnClearHdri').onclick(); }
     const u = data.ui || {};
     setSeg('segTone', u.tone); setSeg('segBg', u.bg);
+    if (data.snap?.env?.clouds != null) setSlider('clouds', Math.round(data.snap.env.clouds * 100));
     if (u.bgColor) $('bgColor').value = u.bgColor;
     setSlider('envRot', u.envRot); setSlider('envInt', u.envInt); setSlider('envBlur', u.envBlur); setSlider('exposure', u.exposure);
     if (u.sensor) sensorSel.value = u.sensor;
@@ -500,7 +528,7 @@ async function applyProject(data, files) {
       $('keyColor').value = u.key.color;
       setSlider('keySim', u.key.sim); setSlider('keySmooth', u.key.smooth); setSlider('keySpill', u.key.spill);
     }
-    if (data.snap) V.restore(data.snap);
+    if (data.snap) { V.restore(data.snap); showLightUI(data.snap.sun, data.snap.ao); }
     lastAuto = JSON.stringify(collect());
   } finally { restoring = false; }
 }

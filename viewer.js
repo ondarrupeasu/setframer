@@ -4,6 +4,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -23,6 +28,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NeutralToneMapping;   // keeps the set's own colours (ACES shifts blues/reds)
 renderer.toneMappingExposure = 1.0;
 
+let composer = null, gtao = null;     // AO post-process (built on demand, see setAO) — declared early: layout() uses it
 export const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 const roomEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;   // neutral IBL until an HDRI is loaded
@@ -71,6 +77,7 @@ export function layout() {
   // copy sent to that window is sharp; otherwise the screen's own pixel density.
   renderer.setPixelRatio(state.output ? OUTPUT_W / w : window.devicePixelRatio);
   renderer.setSize(w, h, false);
+  if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); }
   camera.aspect = state.aspect;
   camera.zoom = state.previewZoom || 1;   // shot preview (exports always force 1)
   camera.updateProjectionMatrix();
@@ -168,7 +175,7 @@ renderer.setAnimationLoop(() => {
   controls.update();
   if (state.talent) faceCamera(state.talent.mesh);
   if (state.output) renderOutput();
-  renderer.render(scene, camera);
+  draw();
   syncTalentLive();
   if (live.show && live.video && live.mode === 'frame') {   // the live camera, keyed, full frame (viewer only)
     live.texture.needsUpdate = true;
@@ -285,6 +292,7 @@ export function useSet(root, name) {
   state.setRoot = root;
   state.setName = name;
   scene.add(root);
+  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   // glTF is metres by the spec, but plenty of downloads come in centimetres or inches (a 670-unit
   // "studio"). Pick the first unit that gives the set a believable height (2.2–12 m); the user can
   // override it (setUnits). Metres win whenever they are plausible.
@@ -293,6 +301,8 @@ export function useSet(root, name) {
   root.scale.multiplyScalar(state.units);
   state.floor = null;
   frameObject(root);
+  applySun();
+  if (composer) buildComposer();          // the AO pass is bound to this set
   document.body.classList.add('loaded');
   emit('setLoaded', { name, ...meshStats(root), size: state.sceneSize, units: state.units });
 }
@@ -306,6 +316,7 @@ export function setUnits(factor) {
   state.floor = null;
   removeTalent();
   root.updateMatrixWorld(true);
+  applySun();
   for (const b of roleBoxes.values()) b.update();
   frameObject(root);
   emit('setLoaded', { name: state.setName, ...meshStats(root), size: state.sceneSize, units: factor });
@@ -379,13 +390,24 @@ export async function loadSetFiles(files) {
 }
 
 export function applyEnv() {
-  const e = state.env, r = THREE.MathUtils.degToRad(e.rotation);
+  const e = state.env, isSky = e.background === 'sky';
+  // the sky follows the sun's own direction: rotating it would split sky and sunlight apart
+  const r = isSky ? 0 : THREE.MathUtils.degToRad(e.rotation);
   scene.environmentRotation.set(0, r, 0);
   scene.backgroundRotation.set(0, r, 0);
-  scene.environmentIntensity = e.intensity;
-  scene.backgroundIntensity = e.intensity;
+  // The generated sky works in physical units (far brighter than an HDRI file): scale it down so
+  // Intensity 1 means "a normal day" like every other background.
+  scene.environmentIntensity = e.intensity * (isSky ? SKY_GAIN : 1);
+  scene.backgroundIntensity = e.intensity * (isSky ? SKY_GAIN * 1.8 : 1);   // the visible sky a little brighter than its light
   scene.backgroundBlurriness = e.blur;
-  scene.background = (e.background === 'hdri' && state.hdrTex) ? state.hdrTex : new THREE.Color(e.color);
+  if (isSky) {
+    if (!skyEnv) buildSky();
+    scene.background = skyCube.texture;
+    scene.environment = skyEnv;
+  } else {
+    scene.environment = state.hdriEnv || roomEnv;
+    scene.background = (e.background === 'hdri' && state.hdrTex) ? state.hdrTex : new THREE.Color(e.color);
+  }
 }
 export function setEnv(patch) { Object.assign(state.env, patch); applyEnv(); }
 export function setExposure(v) { renderer.toneMappingExposure = v; }
@@ -404,8 +426,8 @@ export async function loadHDRIFile(file) {
     if (state.hdrTex) state.hdrTex.dispose();
     state.hdrTex = tex;
     state.hdriFile = file;
-    if (scene.environment !== roomEnv) scene.environment.dispose();
-    scene.environment = pmrem.fromEquirectangular(tex).texture;
+    state.hdriEnv?.dispose();
+    state.hdriEnv = pmrem.fromEquirectangular(tex).texture;
     applyEnv();
     emit('hdriLoaded', { name: file.name, w: tex.image.width, h: tex.image.height });
   } finally {
@@ -417,7 +439,7 @@ export async function loadHDRIFile(file) {
 export function clearHDRI() {
   state.hdriFile = null;
   if (state.hdrTex) { state.hdrTex.dispose(); state.hdrTex = null; }
-  if (scene.environment !== roomEnv) { scene.environment.dispose(); scene.environment = roomEnv; }
+  state.hdriEnv?.dispose(); state.hdriEnv = null;
   applyEnv();
 }
 
@@ -614,6 +636,7 @@ export function placeTalent(point, frameH = 2.2) {
   mesh.add(edges);
   mesh.position.copy(point);
   helpers.add(mesh);
+  mesh.layers.set(1);                   // helper layer: the AO pass must not see the card
   state.talent = { mesh, frameH };
   setTalentHeight(frameH);
   emit('talent');
@@ -783,6 +806,7 @@ function clearEdits() {
 export let pickMode = null;      // null | 'screen' | 'talent'
 export function setPickMode(m) { pickMode = m; document.body.classList.toggle('picking', !!m); if (m !== 'object') hoverAt(-1e4, -1e4); }
 const raycaster = new THREE.Raycaster();
+raycaster.layers.enableAll();
 let downAt = null;
 // Floor drag (Move mode): press ON the selected object and drag — it slides on the horizontal plane
 // through the point you grabbed, following the mouse. Captured before OrbitControls sees the press.
@@ -933,7 +957,8 @@ export async function renderPNG(w, h) {
   camera.aspect = w / h;
   camera.zoom = 1;                       // the export is always the full frame, whatever is previewed
   camera.updateProjectionMatrix();
-  renderer.render(scene, camera);
+  if (composer) { composer.setPixelRatio(1); composer.setSize(w, h); }
+  draw();
   // toDataURL is synchronous: it grabs THIS frame before the render loop can draw over it.
   const dataUrl = canvas.toDataURL('image/png');
   showOriginals(false);
@@ -976,6 +1001,7 @@ export function snapshot() {
     units: state.units,
     env: { ...state.env },
     exposure: renderer.toneMappingExposure,
+    sun: { ...state.sun }, ao: { ...state.ao },
     view: getView(),
     roles: [...state.roles.entries()].map(([uuid, r]) => {
       const m = meshByUuid(uuid);
@@ -1017,6 +1043,8 @@ export function restore(snap) {
   }
   if (snap.env) setEnv(snap.env);
   if (snap.exposure) setExposure(snap.exposure);
+  if (snap.sun) setSun(snap.sun);
+  if (snap.ao) setAO(snap.ao);
   if (snap.view) setView(snap.view);
   emit('objects');
 }
@@ -1051,7 +1079,7 @@ function renderOutput() {
   }
   helpers.visible = false;
   showOriginals(true);
-  renderer.render(scene, camera);
+  draw();
   o.ctx.drawImage(canvas, 0, 0, OUTPUT_W, OUTPUT_H);   // same task as the render: the buffer is still valid
   showOriginals(false);
   helpers.visible = true;
@@ -1215,3 +1243,115 @@ export function sampleLive(clientX, clientY) {
 
 // Closing or navigating away: release the camera explicitly (some browsers keep it a moment longer).
 window.addEventListener('pagehide', () => stopLiveCamera());
+
+// ---- sun (directional light with shadows) + ambient occlusion ----------------------------------
+// Many downloaded sets carry only colour textures: Sketchfab's own viewer adds a sun, shadows and AO
+// that do not travel with the file. These two bring that back. Both are off by default (sets with
+// lighting baked into the textures, like most TV studios, look worse with extra light).
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+camera.layers.enable(1);                         // helpers (presenter card) live on layer 1
+const sun = new THREE.DirectionalLight(0xffffff, 3);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.03;
+sun.visible = false;
+scene.add(sun, sun.target);
+state.sun = { on: false, azimuth: 135, elevation: 40, intensity: 3, kelvin: 5600 };
+state.ao = { on: false, strength: 1, radius: 0.6 };
+
+/** Colour temperature (K) → RGB (Tanner Helland's fit), for a warm / cool sun. */
+function kelvin(k) {
+  const t = k / 100;
+  const r = t <= 66 ? 255 : 329.7 * (t - 60) ** -0.1332;
+  const g = t <= 66 ? 99.47 * Math.log(t) - 161.12 : 288.12 * (t - 60) ** -0.0755;
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04;
+  const c = (x) => Math.min(255, Math.max(0, x)) / 255;
+  return new THREE.Color().setRGB(c(r), c(g), c(b), THREE.SRGBColorSpace);
+}
+function sunDirection() {
+  const az = THREE.MathUtils.degToRad(state.sun.azimuth), el = THREE.MathUtils.degToRad(state.sun.elevation);
+  return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
+}
+function applySun() {
+  const s = state.sun;
+  if (state.env.background === 'sky') { buildSky(); applyEnv(); }   // the sky moves with the sun
+  sun.visible = s.on;
+  sun.intensity = s.intensity;
+  sun.color.copy(kelvin(s.kelvin));
+  if (!state.setRoot) return;
+  // Shadow camera wraps the whole set; aim from azimuth (0 = from the front, +Z) and elevation.
+  const box = new THREE.Box3().setFromObject(state.setRoot);
+  const center = box.getCenter(new THREE.Vector3()), r = Math.max(1, box.getSize(new THREE.Vector3()).length() / 2);
+  const dir = sunDirection();
+  sun.position.copy(center).addScaledVector(dir, r * 2);
+  sun.target.position.copy(center);
+  const sc = sun.shadow.camera;
+  sc.left = sc.bottom = -r; sc.right = sc.top = r; sc.near = 0.1; sc.far = r * 4;
+  sc.updateProjectionMatrix();
+  sun.shadow.needsUpdate = true;
+}
+export function setSun(patch) { Object.assign(state.sun, patch); applySun(); }
+
+// AO = GTAO post-process. It sees the set through its own camera limited to layer 0, so the
+// presenter card (layer 1) never darkens the set around it.
+const aoCamera = new THREE.PerspectiveCamera();
+function buildComposer() {
+  composer?.dispose?.();
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const size = renderer.getSize(new THREE.Vector2());
+  gtao = new GTAOPass(scene, aoCamera, size.x, size.y);
+  gtao.output = GTAOPass.OUTPUT.Default;
+  composer.addPass(gtao);
+  composer.addPass(new OutputPass());
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(size.x, size.y);
+  applyAO();
+}
+function applyAO() {
+  if (!gtao) return;
+  gtao.blendIntensity = state.ao.strength;
+  gtao.updateGtaoMaterial({ radius: state.ao.radius });
+}
+export function setAO(patch) {
+  Object.assign(state.ao, patch);
+  if (state.ao.on && !composer) buildComposer();
+  applyAO();
+}
+/** Draw the scene to the canvas: plain, or through the AO composer when AO is on. */
+function draw() {
+  if (state.ao.on && composer) {
+    aoCamera.copy(camera);
+    aoCamera.layers.set(0);
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
+}
+
+// ---- procedural sky (no download needed): background + lighting, following the sun --------------
+// Rendered once into a cube map (sharp background) and pre-filtered for lighting; rebuilt only when
+// the sun or the clouds change.
+export let SKY_GAIN = 0.05;
+export function _setSkyGain(g) { SKY_GAIN = g; applyEnv(); }   // tuning hook
+let sky = null, skyScene = null, skyCube = null, skyCam = null, skyEnv = null;
+function buildSky() {
+  if (!sky) {
+    sky = new Sky();
+    sky.scale.setScalar(1000);
+    skyScene = new THREE.Scene();
+    skyScene.add(sky);
+    skyCube = new THREE.WebGLCubeRenderTarget(1024, { type: THREE.HalfFloatType });
+    skyCam = new THREE.CubeCamera(1, 5000, skyCube);
+  }
+  const u = sky.material.uniforms;
+  u.turbidity.value = 2.5; u.rayleigh.value = 1.2; u.mieCoefficient.value = 0.005; u.mieDirectionalG.value = 0.8;
+  u.cloudCoverage.value = state.env.clouds ?? 0.3;
+  u.sunPosition.value.copy(sunDirection());
+  skyCam.update(renderer, skyScene);
+  skyEnv?.dispose();
+  skyEnv = pmrem.fromCubemap(skyCube.texture).texture;
+}
+export function setClouds(v) { state.env.clouds = v; if (state.env.background === 'sky') { buildSky(); applyEnv(); } }

@@ -56,6 +56,12 @@ vMix**. Los alumnos de Tartanga ya ponen el fondo del croma con vMix → esa es 
   visor, nunca en export ni en la salida. Croma tipo OBS (distancia CbCr BT.709, similarity/smoothness/spill) +
   cuentagotas. OJO: three.js entrega las VideoTexture SIN decodificar a un ShaderMaterial → el croma trabaja en sRGB tal cual.
 - `<img>.decode()` se cuelga con la pestaña en segundo plano → usar `createImageBitmap`.
+- **Luz para sets sin luz** (Lighting): muchos glTF de Sketchfab traen solo color — la «gracia» la pone el visor de
+  Sketchfab (sol, sombras, AO) y no viaja en el archivo. *Sun* = DirectionalLight con sombras (cámara de sombra que
+  envuelve el set, temperatura de color), *Ambient occlusion* = GTAOPass vía EffectComposer (cámara propia solo con la
+  capa 0: la tarjeta del presentador vive en la capa 1 y no oscurece nada), *Sky* = `objects/Sky.js` renderizado a un
+  cubemap (fondo) + PMREM (luz), sigue al sol; ×`SKY_GAIN` (0,05) porque va en unidades físicas. Todo apagado por
+  defecto (los platós de TV traen la luz horneada). `draw()` = único punto de render del visor/salida/export.
 
 ## Ficheros
 `index.html` · `app.js` (UI) · `project.js` (guardar/abrir proyectos) · `output.html` (salida limpia) · `viewer.js` (three.js: escena, carga, cámara, roles, picking, PNG) · `vmixset.js`

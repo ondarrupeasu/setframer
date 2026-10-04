@@ -108,13 +108,27 @@
     <div class="ce-panel">
       <div class="ce-panel-title">Lighting</div>
       <div id="hdriInfo" class="muted">Built-in neutral studio light. Load an HDRI (.hdr/.exr, free at polyhaven.com) to light the set with a real place.</div>
-      <div class="field" title="Only what is seen BEHIND the set (through windows, above open walls). It does not light the set."><span>Background</span>
-        <div class="ce-seg" id="segBg"><button data-v="hdri" class="ce-on">HDRI</button><button data-v="color">Colour</button></div>
+      <div class="field" title="What is seen BEHIND the set (through windows, above open walls). HDRI and Colour do not change the light; Sky is a generated daylight sky that also lights the set."><span>Background</span>
+        <div class="ce-seg" id="segBg"><button data-v="hdri" class="ce-on">HDRI</button><button data-v="sky" title="A generated daylight sky that also lights the set and follows the Sun direction/height — good for exteriors, no download needed">Sky</button><button data-v="color">Colour</button></div>
         <input type="color" id="bgColor" value="#202024">
       </div>
+      <div class="field" id="cloudRow" hidden title="Clouds in the generated sky"><span>Clouds</span><div class="ce-slider"><input type="range" id="clouds" min="0" max="100" value="30"><span class="ce-val" id="cloudsV"></span></div></div>
       <div class="field" title="Turns the HDRI around the set: changes where the light comes from."><span>Rotation</span><div class="ce-slider"><input type="range" id="envRot" min="-180" max="180" value="0"><span class="ce-val" id="envRotV">0°</span></div></div>
       <div class="field" title="Strength of the light coming from the HDRI (or the built-in light)."><span>Intensity</span><div class="ce-slider"><input type="range" id="envInt" min="0" max="300" value="100"><span class="ce-val" id="envIntV">1.00</span></div></div>
       <div class="field" title="Like the camera iris: brighter or darker overall, in stops (EV)."><span>Exposure</span><div class="ce-slider"><input type="range" id="exposure" min="-300" max="300" value="0"><span class="ce-val" id="exposureV">0.0 EV</span></div></div>
+      <div class="sub-title">Sun &amp; shadows</div>
+      <label class="ce-sw gap-top" title="A sun that casts shadows. For sets that come without lighting (only colour textures) — they look flat without it."><span class="ce-track" id="swSun"><span class="ce-knob"></span></span>Sun</label>
+      <div id="sunCtl" hidden>
+        <div class="field" title="Where the sun comes from, around the set. 0° = from the front (behind the camera)."><span>Direction</span><div class="ce-slider"><input type="range" id="sunAz" min="0" max="360" value="135"><span class="ce-val" id="sunAzV"></span></div></div>
+        <div class="field" title="Sun height: low = long shadows (morning / evening), high = short shadows (noon)."><span>Height</span><div class="ce-slider"><input type="range" id="sunEl" min="2" max="89" value="40"><span class="ce-val" id="sunElV"></span></div></div>
+        <div class="field"><span>Strength</span><div class="ce-slider"><input type="range" id="sunInt" min="0" max="100" value="30"><span class="ce-val" id="sunIntV"></span></div></div>
+        <div class="field" title="Colour of the light: warm (sunset, tungsten) to cool (overcast, shade)."><span>Warmth</span><div class="ce-slider"><input type="range" id="sunK" min="2000" max="10000" step="100" value="5600"><span class="ce-val" id="sunKV"></span></div></div>
+      </div>
+      <label class="ce-sw gap-top" title="Soft darkening in corners, under objects and where things meet — gives volume."><span class="ce-track" id="swAO"><span class="ce-knob"></span></span>Ambient occlusion</label>
+      <div id="aoCtl" hidden>
+        <div class="field"><span>Strength</span><div class="ce-slider"><input type="range" id="aoStr" min="0" max="200" value="100"><span class="ce-val" id="aoStrV"></span></div></div>
+        <div class="field" title="How far the darkening reaches (metres). Bigger for big sets."><span>Reach</span><div class="ce-slider"><input type="range" id="aoRad" min="5" max="300" value="60"><span class="ce-val" id="aoRadV"></span></div></div>
+      </div>
       <button class="ce-btn ce-ghost sm" id="btnClearHdri" hidden>Remove HDRI</button>
       <details class="adv"><summary>Advanced</summary>
       <div class="field" title="Blurs the HDRI when it is shown as background."><span>Blur</span><div class="ce-slider"><input type="range" id="envBlur" min="0" max="100" value="0"><span class="ce-val" id="envBlurV">0.00</span></div></div>

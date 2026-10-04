@@ -140,6 +140,7 @@ $('btnClearHdri').onclick = () => {
 
 // ---- set panel --------------------------------------------------------------------------------
 seg('segSide', (v) => V.frameAll(+v));
+V.events.addEventListener('side', (e) => $('segSide').querySelectorAll('button').forEach((b) => b.classList.toggle('ce-on', +b.dataset.v === e.detail.side)));
 $('layersAdv').ontoggle = () => document.body.classList.toggle('uvfix', $('layersAdv').open);
 $('units').onchange = (e) => V.setUnits(+e.target.value);
 function toggle(id, key, fn) {

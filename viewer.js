@@ -42,6 +42,9 @@ camera.position.set(0, 1.6, 5);
 export const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.12;
+// Blender-style mouse: middle button orbits (Shift + middle pans — OrbitControls turns Shift+rotate into
+// pan), right button pans; the left button keeps orbiting too, for laptops without a middle button.
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
 controls.target.set(0, 1.4, 0);
 controls.update();
 
@@ -925,8 +928,34 @@ function surfaceDistance(ray) {
   const hit = raycaster.intersectObject(state.setRoot, true).find((h) => h.object.isMesh && isShown(h.object) && h.distance > 0.35);
   return hit ? hit.distance : null;
 }
+// Blender on a trackpad: two fingers = orbit, Shift + two fingers = pan, pinch = zoom. A trackpad shows
+// itself by sideways or fractional deltas; a mouse wheel sends whole vertical steps (and zooms below).
+let lastPad = -1e9;
+function orbitBy(dx, dy) {
+  const off = camera.position.clone().sub(controls.target);
+  const sph = new THREE.Spherical().setFromVector3(off);
+  sph.theta -= dx * 0.004;
+  sph.phi = THREE.MathUtils.clamp(sph.phi - dy * 0.004, 0.02, Math.PI - 0.02);
+  off.setFromSpherical(sph);
+  camera.position.copy(controls.target).add(off);
+  controls.update(); camDirty = true;
+}
+function panBy(dx, dy) {
+  const k = camera.position.distanceTo(controls.target) * 0.0012 / camera.zoom;
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+  const mv = right.multiplyScalar(dx * k).addScaledVector(up, -dy * k);
+  camera.position.add(mv); controls.target.add(mv);
+  controls.update(); camDirty = true;
+}
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  // trackpad = sideways or fractional or small deltas (a mouse notch is ~100 px); once seen, the rest of
+  // that gesture stays "trackpad" even when a single event looks like a mouse step
+  const now = performance.now();
+  const looksPad = e.deltaMode === 0 && (e.deltaX !== 0 || !Number.isInteger(e.deltaY) || Math.abs(e.deltaY) < 40);
+  if (looksPad || now - lastPad < 150) lastPad = now;
+  const trackpad = !e.ctrlKey && now === lastPad;
+  if (trackpad) { if (e.shiftKey) panBy(e.deltaX, e.deltaY); else orbitBy(e.deltaX, e.deltaY); return; }
   const ray = cursorRay(e);
   const d = surfaceDistance(ray) ?? controls.target.distanceTo(camera.position);
   // trackpads send many small deltas, mice fewer big ones; pinch arrives as ctrl+wheel
@@ -939,6 +968,36 @@ canvas.addEventListener('wheel', (e) => {
   camera.position.add(move); controls.target.add(move);
   controls.update(); camDirty = true;
 }, { passive: false });
+
+// Ctrl + middle-button drag = zoom (Blender). Also stop the browser's middle-click autoscroll.
+canvas.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
+let ctrlZoom = null;
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button !== 1 || !(e.ctrlKey || e.metaKey)) return;
+  e.stopImmediatePropagation();
+  ctrlZoom = { y: e.clientY };
+  canvas.setPointerCapture(e.pointerId);
+}, { capture: true });
+canvas.addEventListener('pointermove', (e) => {
+  if (!ctrlZoom) return;
+  const dy = e.clientY - ctrlZoom.y; ctrlZoom.y = e.clientY;
+  const dir = new THREE.Vector3().subVectors(controls.target, camera.position);
+  const step = Math.max(0.03, dir.length() * 0.01) * -dy * speedFactor(e);   // drag up = closer
+  dir.normalize().multiplyScalar(step);
+  camera.position.add(dir); controls.target.add(dir);
+  controls.update(); camDirty = true;
+});
+canvas.addEventListener('pointerup', (e) => { if (ctrlZoom) { ctrlZoom = null; canvas.releasePointerCapture(e.pointerId); } });
+
+// Blender numpad views: 1 front, 3 right, Ctrl+1 back, Ctrl+3 left; Home = frame the set again.
+window.addEventListener('keydown', (e) => {
+  if (typing(e) || !state.setRoot) return;
+  const k = e.code;
+  if (e.metaKey || e.altKey) return;      // Cmd+number switches browser tabs: leave it alone
+  if (k === 'Numpad1' || k === 'Digit1') { e.preventDefault(); frameAll(e.ctrlKey ? 2 : 0); emit('side', { side: e.ctrlKey ? 2 : 0 }); }
+  else if (k === 'Numpad3' || k === 'Digit3') { e.preventDefault(); frameAll(e.ctrlKey ? 3 : 1); emit('side', { side: e.ctrlKey ? 3 : 1 }); }
+  else if (k === 'Home') { e.preventDefault(); frameAll(0); emit('side', { side: 0 }); }
+});
 
 // Double-click on something = orbit around it from now on (the camera does not move).
 canvas.addEventListener('dblclick', (e) => {

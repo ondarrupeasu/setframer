@@ -223,12 +223,12 @@ slider('lightSoft', (v) => setLightProp({ softness: v / 100 }), (v) => `${v}%`);
 slider('lightTilt', (v) => setLightProp({ tilt: v }), (v) => `${v}°`);
 slider('lightYaw', (v) => setLightProp({ yaw: v }), (v) => `${v}°`);
 $('swLightShadow').parentElement.onclick = (e) => { e.preventDefault(); const l = selLight(); if (l) setLightProp({ shadow: !l.shadow }); };
-$('swLightGlow').parentElement.onclick = (e) => { e.preventDefault(); const l = selLight(); if (l) setLightProp({ glowOn: !l.glowOn }); };
+slider('lightGlow', (v) => setLightProp({ glowSize: v }), (v) => (v ? `${v}` : 'off'));
 // show a slider value without firing it (the input event would write it back to the light)
 function showSlider(id, v) {
   const el = $(id); el.value = v;
   el.style.setProperty('--p', `${(100 * (el.value - el.min)) / (el.max - el.min)}%`);
-  $(id + 'V').textContent = id === 'lightK' ? `${v} K` : id === 'lightSoft' ? `${v}%` : id === 'lightStr' ? `${v}` : `${v}°`;
+  $(id + 'V').textContent = id === 'lightK' ? `${v} K` : id === 'lightSoft' ? `${v}%` : id === 'lightStr' ? `${v}` : id === 'lightGlow' ? (v ? `${v}` : 'off') : `${v}°`;
 }
 function renderLights() {
   const list = $('lightList'); list.textContent = '';
@@ -239,7 +239,7 @@ function renderLights() {
     row.innerHTML = `<span class="swatch"></span><span class="nm"></span><span class="ops"><button title="${e.fromFile ? 'Switch off' : 'Delete'}">${e.fromFile ? (e.on === false ? 'Off' : 'On') : '✕'}</button></span>`;
     row.querySelector('.swatch').style.background = e.on === false ? 'transparent' : c;
     row.querySelector('.nm').textContent = `${e.name}${e.fromFile ? ' · from the file' : ''} · ${e.type === 'spot' ? 'spot' : 'bulb'}`;
-    row.onclick = () => V.selectLight(e.id);
+    row.onclick = () => V.selectLight(e.id === V.getSelectedLightId() ? null : e.id);   // click again = deselect
     row.querySelector('button').onclick = (ev) => {
       ev.stopPropagation();
       if (e.fromFile) V.updateLight(e.id, { on: e.on === false }); else V.removeLight(e.id);
@@ -257,9 +257,9 @@ function renderLights() {
   if (document.activeElement?.type !== 'range') {
     if (own) { showSlider('lightK', e.kelvin); showSlider('lightCone', e.cone); showSlider('lightSoft', Math.round(e.softness * 100)); showSlider('lightTilt', e.tilt); showSlider('lightYaw', e.yaw); }
     showSlider('lightStr', e.strength);
+    showSlider('lightGlow', e.glowSize ?? (e.glowOn ? 20 : 0));
   }
   $('swLightShadow').classList.toggle('ce-on', !!e.shadow);
-  $('swLightGlow').classList.toggle('ce-on', !!e.glowOn);
 }
 V.events.addEventListener('lights', renderLights);
 
@@ -328,14 +328,15 @@ $('btnPickScreen').onclick = () => setPick('screen', 'Click a screen surface in 
 $('btnPickTalent').onclick = () => setPick('talent', 'Click the floor where the presenter stands · Esc to cancel');
 window.addEventListener('keydown', (e) => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
-  if (e.key === 'Escape') { setPick(null); V.select(null); setShot(-1); }
+  if (e.key === 'Escape') { setPick(null); V.select(null); V.selectLight(null); setShot(-1); }
   if ((e.key === 'Delete' || e.key === 'Backspace') && V.getSelected()) { e.preventDefault(); V.hideSelected(); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && V.getSelectedLightId()) { e.preventDefault(); V.removeLight(V.getSelectedLightId()); }
 });
 
 V.events.addEventListener('pick', (e) => {
   const { mode, mesh, point } = e.detail;
   if (mode === 'object') { V.select(V.objectOf(mesh)); return; }   // stays in select mode
-  if (mode === 'light') { V.addLight(e.detail.point, e.detail.normal); setPick(null); return; }
+  if (mode === 'light') { V.addLight(e.detail.point, e.detail.normal, {}, mesh); setPick(null); return; }
   if (mode === 'screen') {
     const used = new Set([...V.state.roles.values()].map((r) => r.role));
     const free = LETTERS.find((l) => !used.has(l));

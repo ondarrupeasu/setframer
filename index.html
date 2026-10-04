@@ -154,13 +154,13 @@
         <div class="field" id="lightSoftRow" title="Soft or hard edge of the pool of light"><span>Edge</span><div class="ce-slider"><input type="range" id="lightSoft" min="0" max="100" value="50"><span class="ce-val" id="lightSoftV"></span></div></div>
         <div class="field" id="lightTiltRow" title="0° = straight down; 90° = horizontal"><span>Aim tilt</span><div class="ce-slider"><input type="range" id="lightTilt" min="0" max="90" value="0"><span class="ce-val" id="lightTiltV"></span></div></div>
         <div class="field" id="lightYawRow" title="Which way it leans when tilted"><span>Aim turn</span><div class="ce-slider"><input type="range" id="lightYaw" min="0" max="360" value="0"><span class="ce-val" id="lightYawV"></span></div></div>
+        <div class="field" title="A halo hidden inside the lamp, showing around its edges so it looks on. 0 = none."><span>Glow</span><div class="ce-slider"><input type="range" id="lightGlow" min="0" max="100" value="20"><span class="ce-val" id="lightGlowV"></span></div></div>
         <div class="ce-row gap-top">
           <label class="ce-sw" title="Cast shadows (costs performance: use on a few lights)"><span class="ce-track" id="swLightShadow"><span class="ce-knob"></span></span>Shadow</label>
-          <label class="ce-sw" title="A soft glow on the lamp itself, so it looks on"><span class="ce-track" id="swLightGlow"><span class="ce-knob"></span></span>Glow</label>
           <button class="ce-btn ce-ghost sm" id="btnDelLight">Delete</button>
         </div>
       </div>
-      <div class="hint">Drag a light’s dot to move it (Alt = up/down). For a night scene: Sun off, Background Colour (dark) or a dark HDRI, lower Intensity. No bounce light — for that, bake the lighting in Blender.</div>
+      <div class="hint">Selected light: move it with the X / Y / Z arrows, or drag its dot (Alt = up/down). Esc or a click on an empty spot deselects. For a night scene: Sun off, Background Colour (dark) or a dark HDRI, lower Intensity. No bounce light — for that, bake the lighting in Blender.</div>
     </div>
 
     <div class="ce-panel">

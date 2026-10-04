@@ -709,7 +709,11 @@ const transform = new TransformControls(camera, canvas);
 transform.setSize(0.8);
 helpers.add(transform.getHelper());
 transform.addEventListener('dragging-changed', (e) => { controls.enabled = !e.value; });
-transform.addEventListener('objectChange', () => { selBox?.update(); for (const b of roleBoxes.values()) b.update(); emit('objects'); });
+transform.addEventListener('objectChange', () => {
+  const lid = transform.object?.userData.lightId;
+  if (lid) { updateLight(lid, { pos: transform.object.position.toArray() }); return; }   // the gizmo is on a light
+  selBox?.update(); for (const b of roleBoxes.values()) b.update(); emit('objects');
+});
 let selected = null, selBox = null;
 const original = new Map();   // uuid -> { position, quaternion, scale } before the first move
 export const edits = { hidden: new Set(), moved: new Set(), foreground: new Set() };
@@ -730,6 +734,7 @@ export function isShown(o) { for (; o; o = o.parent) if (!o.visible) return fals
 export function select(obj) {
   if (selBox) { helpers.remove(selBox); selBox.dispose(); selBox = null; }
   transform.detach();
+  if (obj) markLightSelected(null);       // one thing selected at a time
   selected = obj;
   if (hoverBox) { helpers.remove(hoverBox); hoverBox.dispose(); hoverBox = null; hoverObj = null; }
   if (obj) {
@@ -760,7 +765,7 @@ export function setTransformMode(mode) {   // null | 'translate' | 'rotate'
   transform.attach(selected);
   emit('objects');
 }
-export function transformMode() { return transform.object ? transform.mode : null; }
+export function transformMode() { return transform.object && transform.object === selected ? transform.mode : null; }
 export function hideSelected() {
   if (!selected) return;
   selected.visible = false;
@@ -835,7 +840,10 @@ canvas.addEventListener('pointerdown', (e) => {
     const front = state.setRoot && raycaster.intersectObject(state.setRoot, true).find((h) => h.object.isMesh && isShown(h.object));
     if (t && (!front || t.distance < front.distance)) { obj = state.talent.mesh; hit = t; }
   }
-  if (!obj) return;
+  if (!obj) {
+    if (selectedLightId && !pickMode) lightClick = [e.clientX, e.clientY];   // a plain click elsewhere = deselect
+    return;
+  }
   e.stopImmediatePropagation();          // OrbitControls must not orbit while we drag
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y);
   floorDrag = { obj, plane, offset: obj.getWorldPosition(new THREE.Vector3()).sub(hit.point), talent: obj === state.talent?.mesh,
@@ -880,7 +888,12 @@ canvas.addEventListener('pointermove', (e) => {
   if (floorDrag.talent) emit('talent');
   else { selBox?.update(); for (const b of roleBoxes.values()) b.update(); }
 });
+let lightClick = null;
 canvas.addEventListener('pointerup', (e) => {
+  if (lightClick) {
+    if (Math.hypot(e.clientX - lightClick[0], e.clientY - lightClick[1]) < 4) selectLight(null);
+    lightClick = null;
+  }
   if (!floorDrag) return;
   const wasTalent = floorDrag.talent, wasLight = !!floorDrag.light;
   floorDrag = null;
@@ -1412,7 +1425,7 @@ function newLightObject(type) {
   return l;
 }
 function makeHandle() {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff5a4d, depthTest: false, transparent: true, opacity: 0.9 }));
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff5a4d, depthTest: false, transparent: true, opacity: 0.75 }));
   m.renderOrder = 10; m.layers.set(1);
   return m;
 }
@@ -1440,15 +1453,19 @@ function placeEntry(e) {
   L.updateMatrixWorld();
   const wp = L.getWorldPosition(new THREE.Vector3());
   e.handle.position.copy(wp);
-  e.glow.visible = !!e.glowOn && L.visible;
+  // Glow: a halo that sits INSIDE the lamp (depth-tested), so only its rim shows around the
+  // lamp's silhouette — the lamp looks on, without a floating ball. Size 0 = no glow.
+  const gsz = e.glowSize ?? (e.glowOn ? 20 : 0);
+  e.glow.visible = gsz > 0 && L.visible;
   e.glow.position.copy(wp);
-  const gs = 0.35 + e.strength / 120;
+  const gs = (0.04 + (gsz / 100) * 0.9) * (0.6 + e.strength / 125);
   e.glow.scale.set(gs, gs, 1);
   e.glow.material.color.copy(L.color);
   e.coneHelper?.update();
 }
 function wrapEntry(e) {
   e.handle = makeHandle();
+  e.handle.userData.lightId = e.id;
   handles.add(e.handle);
   e.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
   e.glow.layers.set(1);
@@ -1458,11 +1475,16 @@ function wrapEntry(e) {
   placeEntry(e);
   return e;
 }
-/** New light at a clicked point: just off the surface, a spot aiming straight down. */
-export function addLight(point, normal, opts = {}) {
-  const p = new THREE.Vector3().copy(point).addScaledVector(normal ?? new THREE.Vector3(0, -1, 0), 0.12);
+/**
+ * New light at a clicked point: a few cm INSIDE the surface clicked (the bulb is inside the lamp),
+ * a spot aiming straight down. The mesh clicked stops casting shadows, so the lamp's own shell
+ * does not block its light.
+ */
+export function addLight(point, normal, opts = {}, owner = null) {
+  const p = new THREE.Vector3().copy(point).addScaledVector(normal ?? new THREE.Vector3(), -0.05);
   const e = { id: ++lightSeq, name: `Light ${lightSeq}`, type: opts.type || 'spot', pos: p.toArray(),
-    kelvin: 2700, strength: 50, cone: 40, softness: 0.5, tilt: 0, yaw: 0, shadow: false, glowOn: true, ...opts };
+    kelvin: 2700, strength: 50, cone: 40, softness: 0.5, tilt: 0, yaw: 0, shadow: false, glowSize: 20, ...opts };
+  if (owner?.isMesh) { e.owner = owner; e.ownerCast = owner.castShadow; owner.castShadow = false; }
   e.light = newLightObject(e.type);
   lightsGroup.add(e.light);
   if (e.light.isSpotLight) lightsGroup.add(e.light.target);
@@ -1490,6 +1512,8 @@ export function removeLight(id) {
   const e = state.lights.find((l) => l.id === id);
   if (!e) return;
   if (e.fromFile) { updateLight(id, { on: false }); return; }   // lights of the file are switched off, not deleted
+  if (transform.object === e.handle) transform.detach();
+  if (e.owner) e.owner.castShadow = e.ownerCast;
   lightsGroup.remove(e.light); if (e.light.target) lightsGroup.remove(e.light.target); e.light.dispose();
   handles.remove(e.handle); e.handle.geometry.dispose();
   glows.remove(e.glow); e.glow.material.dispose();
@@ -1503,16 +1527,29 @@ export function duplicateLight(id) {
   if (!e || e.fromFile) return null;
   const { right } = camAxes();   // a copy 1.5 m to the right as seen from the camera, ready to drag
   const p = new THREE.Vector3().fromArray(e.pos).addScaledVector(right, 1.5);
-  const { id: _i, name: _n, light: _l, handle: _h, glow: _g, coneHelper: _c, pos: _p, ...props } = e;
+  const { id: _i, name: _n, light: _l, handle: _h, glow: _g, coneHelper: _c, pos: _p, owner: _o, ownerCast: _oc, ...props } = e;
   return addLight(p, new THREE.Vector3(), props);
 }
+/** Select a light (null = none): highlight its dot, show its cone, and put the X/Y/Z arrows on it. */
 export function selectLight(id) {
+  if (id) select(null);                   // an object and a light are never selected together
+  markLightSelected(id);
+  const e = state.lights.find((l) => l.id === id);
+  if (e) {
+    transform.setMode('translate');
+    transform.setSpace('world');
+    transform.showX = transform.showY = transform.showZ = true;
+    transform.attach(e.handle);
+  }
+  emit('lights');
+}
+function markLightSelected(id) {
   selectedLightId = id;
+  if (!id && transform.object?.userData.lightId) transform.detach();
   for (const e of state.lights) {
     e.handle.material.color.set(e.id === id ? 0xffffff : 0xff5a4d);
     if (e.coneHelper) { e.coneHelper.visible = e.id === id; e.coneHelper.update(); }
   }
-  emit('lights');
 }
 export const getSelectedLightId = () => selectedLightId;
 function clearLights() {
@@ -1537,7 +1574,7 @@ function lightsSnapshot() {
   return state.lights.map((e) => e.fromFile
     ? { fromFile: true, path: e.path, strength: e.strength, shadow: e.shadow, glowOn: e.glowOn, on: e.on }
     : { type: e.type, pos: e.pos, kelvin: e.kelvin, strength: e.strength, cone: e.cone, softness: e.softness,
-        tilt: e.tilt, yaw: e.yaw, shadow: e.shadow, glowOn: e.glowOn, name: e.name });
+        tilt: e.tilt, yaw: e.yaw, shadow: e.shadow, glowSize: e.glowSize, name: e.name, owner: e.owner ? pathOf(e.owner) : null });
 }
 function restoreLights(list) {
   for (const l of list) {
@@ -1545,7 +1582,8 @@ function restoreLights(list) {
       const e = state.lights.find((x) => x.fromFile && x.path === l.path);
       if (e) updateLight(e.id, { strength: l.strength, shadow: l.shadow, glowOn: l.glowOn, on: l.on });
     } else {
-      const e = addLight(new THREE.Vector3().fromArray(l.pos), new THREE.Vector3(), { ...l });
+      const { owner, ...props } = l;
+      const e = addLight(new THREE.Vector3().fromArray(l.pos), new THREE.Vector3(), props, owner ? byPath(owner) : null);
       e.pos = l.pos; placeEntry(e);
     }
   }

@@ -1,6 +1,6 @@
 /* SetFrameR service worker — network-first, cache as offline fallback.
    Bump CACHE when the shell changes. vendor/ (three.js) is cached on first use. */
-const CACHE = 'setframer-v12';
+const CACHE = 'setframer-v13';
 const ASSETS = ['./', './index.html', './output.html', './casa-estilo.css', './styles.css', './app.js', './viewer.js',
   './vmixset.js', './project.js', './demo.js', './lenses.json', './manifest.webmanifest', './icon.svg', './report.js',
   './vendor/three/build/three.module.js', './vendor/three/build/three.core.js'];
@@ -15,7 +15,9 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const { request } = e;
   if (request.method !== 'GET' || !request.url.startsWith(self.location.origin)) return;
-  e.respondWith(fetch(request).then((res) => {
+  // cache: 'no-cache' = always ask the server (ETag → a quick 304 when unchanged). GitHub Pages lets
+  // browsers keep files 10 min without asking, which mixed old and new modules after a deploy.
+  e.respondWith(fetch(request, { cache: 'no-cache' }).then((res) => {
     const copy = res.clone();
     caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
     return res;

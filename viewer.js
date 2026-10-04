@@ -1405,7 +1405,7 @@ export function setClouds(v) { state.env.clouds = v; if (state.env.background ==
 // Lights that come INSIDE the glTF (KHR_lights_punctual) are listed too ("from the file").
 const lightsGroup = new THREE.Group(); scene.add(lightsGroup);
 export const glows = new THREE.Group(); scene.add(glows);
-const handles = new THREE.Group(); helpers.add(handles);
+const handles = new THREE.Group(); handles.visible = false; helpers.add(handles);
 state.lights = [];
 let lightSeq = 0, selectedLightId = null;
 
@@ -1558,6 +1558,7 @@ export function selectLight(id) {
 }
 function markLightSelected(id) {
   selectedLightId = id;
+  handles.visible = !!id;                 // the dots only while a light is selected: nothing over the lamps otherwise
   if (!id && transform.object?.userData.lightId) transform.detach();
   for (const e of state.lights) {
     e.handle.material.color.set(e.id === id ? 0xffffff : 0xff5a4d);

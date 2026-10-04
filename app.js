@@ -11,6 +11,65 @@ const store = {
 };
 const fmt = (n, d = 2) => (Math.round(n * 10 ** d) / 10 ** d).toFixed(d);
 
+// ---- number fields & sliders: ▲▼ steppers + wheel / two-finger scroll (up = more), Shift = finer ---
+const decimalsOf = (x) => { const t = String(x); return t.includes('e-') ? +t.split('e-')[1] : (t.split('.')[1] || '').length; };
+function nudge(el, dir, fine) {
+  const min = el.min === '' ? -Infinity : +el.min, max = el.max === '' ? Infinity : +el.max;
+  let step;
+  if (el.type === 'range') {   // sliders: 1 % of their travel per notch, 0.2 % with Shift
+    step = Math.max(+el.step || 1, (max - min) / (fine ? 500 : 100));
+  } else {                     // numbers: their own step, a tenth with Shift
+    step = (+el.step || 1) / (fine ? 10 : 1);
+  }
+  const d = Math.max(decimalsOf(el.step || 1) + (fine ? 1 : 0), 0);
+  const v = Math.min(max, Math.max(min, (+el.value || 0) + dir * step));
+  el.value = el.type === 'range' ? v : String(+v.toFixed(d));   // +… drops trailing zeros (2.50 → 2.5, 300 stays 300)
+  el.dispatchEvent(new Event(el.type === 'range' ? 'input' : 'change', { bubbles: true }));
+}
+// Wheel: trackpads send many small deltas, a mouse ~100 px per click → one step every 80 px.
+const wheelAcc = new WeakMap();
+function onWheelNudge(el) {
+  return (e) => {
+    e.preventDefault();
+    const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;   // macOS: Shift+wheel = horizontal
+    const px = e.deltaMode === 1 ? delta * 80 : delta;
+    let acc = (wheelAcc.get(el) || 0) - px;          // wheel up (negative delta) = more
+    const notches = Math.trunc(acc / 80);
+    acc -= notches * 80; wheelAcc.set(el, acc);
+    for (let i = 0; i < Math.abs(notches); i++) nudge(el, Math.sign(notches), e.shiftKey);
+  };
+}
+const CHEV_UP = '<svg viewBox="0 0 10 10"><path d="M2 6.5 5 3.5 8 6.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const CHEV_DN = '<svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function enhanceNumbers(root = document) {
+  for (const input of root.querySelectorAll('input.ce-inp.num:not([data-enh])')) {
+    input.dataset.enh = '1';
+    const wrap = document.createElement('span'); wrap.className = 'num-wrap';
+    const unit = input.nextElementSibling?.classList.contains('unit') ? input.nextElementSibling : null;
+    input.replaceWith(wrap);
+    wrap.append(input);
+    if (unit) wrap.append(unit);
+    const steps = document.createElement('span'); steps.className = 'steps';
+    steps.innerHTML = `<button type="button" tabindex="-1" title="More (Shift = finer)">${CHEV_UP}</button><button type="button" tabindex="-1" title="Less (Shift = finer)">${CHEV_DN}</button>`;
+    const [up, dn] = steps.querySelectorAll('button');
+    // press and hold repeats, like a native spinner
+    const hold = (btn, dir) => btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      nudge(input, dir, e.shiftKey);
+      let t = setTimeout(function rep() { nudge(input, dir, e.shiftKey); t = setTimeout(rep, 60); }, 400);
+      const stop = () => { clearTimeout(t); window.removeEventListener('pointerup', stop); };
+      window.addEventListener('pointerup', stop);
+    });
+    hold(up, 1); hold(dn, -1);
+    wrap.append(steps);
+    wrap.addEventListener('wheel', onWheelNudge(input), { passive: false });
+  }
+  for (const range of root.querySelectorAll('.ce-slider input[type=range]:not([data-enh])')) {
+    range.dataset.enh = '1';
+    range.addEventListener('wheel', onWheelNudge(range), { passive: false });
+  }
+}
+
 // ---- busy / messages --------------------------------------------------------------------------
 V.events.addEventListener('busy', (e) => { $('busy').hidden = !e.detail.msg; $('busy').textContent = e.detail.msg; });
 function fail(what, err) { console.error(err); alert(`${what}: ${err?.message || err}`); }
@@ -308,6 +367,7 @@ function renderZooms() {
       rects.appendChild(r);
     }
   });
+  enhanceNumbers(list);
   function save() { store.set('zooms', zooms); renderZooms(); if (shot >= 0) setShot(shot); }
 }
 // Shot preview: the viewer shows what that vMix zoom will show (a centred zoom of the camera, sharp).
@@ -324,6 +384,7 @@ function setShot(i) {
 $('btnShotExit').onclick = () => setShot(-1);
 $('btnAddZoom').onclick = () => { zooms.push({ name: `Shot ${zooms.length + 1}`, zoom: 2 }); store.set('zooms', zooms); renderZooms(); };
 renderZooms();
+enhanceNumbers();
 
 // ---- export -----------------------------------------------------------------------------------
 $('res').value = store.get('res', '1920x1080');

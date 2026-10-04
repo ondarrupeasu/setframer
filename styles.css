@@ -46,13 +46,28 @@ body.dragover #stage { outline: 2px dashed var(--ce-accent); outline-offset: -8p
 #bgColor { width: 30px; height: 26px; border: 1px solid var(--ce-line); border-radius: 6px; background: none; padding: 0; justify-self: start; }
 .ce-inp { padding: 6px 9px; font-size: 12.5px; }
 select.ce-inp { cursor: pointer; }
-.ce-inp.num { width: 64px; padding: 5px 6px; text-align: right; }
-.ce-slider { gap: 8px; }
+.ce-slider { gap: 8px; min-width: 0; }
+.ce-slider input[type=range] { min-width: 0; }
 .unit { color: var(--ce-muted2); font-size: 11px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
-.grid3 label { display: flex; flex-direction: column; gap: 4px; color: var(--ce-muted); font-size: 12px; position: relative; }
-.grid3 .ce-inp.num { width: 100%; box-sizing: border-box; padding-right: 20px; }
-.grid3 .unit { position: absolute; right: 7px; bottom: 7px; }
+.grid3 label { display: flex; flex-direction: column; gap: 4px; color: var(--ce-muted); font-size: 12px; min-width: 0; }
+
+/* Number field = input + unit + ▲▼ steppers in one box (built by enhanceNumbers in app.js).
+   Wheel / two-finger scroll over it (and over any slider) changes the value; Shift = finer. */
+.num-wrap { display: inline-flex; align-items: stretch; width: 92px; flex: none; box-sizing: border-box;
+  background: var(--ce-input); border: 1px solid var(--ce-line); border-radius: var(--ce-r); overflow: hidden; transition: border-color .16s; }
+.num-wrap:hover, .num-wrap:focus-within { border-color: var(--ce-accent); }
+.num-wrap input.ce-inp.num { flex: 1; min-width: 0; width: auto; border: 0; background: transparent; border-radius: 0;
+  padding: 5px 2px 5px 6px; text-align: right; -moz-appearance: textfield; }
+.num-wrap input::-webkit-inner-spin-button, .num-wrap input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.num-wrap .unit { align-self: center; padding: 0 4px 0 2px; }
+.num-wrap .steps { display: flex; flex-direction: column; width: 18px; border-left: 1px solid var(--ce-line); flex: none; }
+.num-wrap .steps button { flex: 1; border: 0; padding: 0; background: transparent; color: var(--ce-muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; }
+.num-wrap .steps button + button { border-top: 1px solid var(--ce-line); }
+.num-wrap .steps button:hover { color: var(--ce-accent); background: var(--ce-card-hi); }
+.num-wrap .steps svg { width: 9px; height: 9px; }
+.grid3 .num-wrap { width: 100%; }
 
 .role { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin-top: 8px;
   padding: 7px 9px; background: var(--ce-card); border: 1px solid var(--ce-line); border-radius: 8px; }
@@ -83,7 +98,8 @@ select.ce-inp { cursor: pointer; }
 #restoreBar .ce-btn, #shotBar .ce-btn { padding: 4px 10px; }
 body.shotpreview #zoomRects { display: none; }
 body.shotpreview #frame { outline: 2px solid var(--ce-accent); }
-.zoom { grid-template-columns: 1fr 64px auto auto; }
+.zoom { grid-template-columns: 1fr 84px auto auto; }
+.zoom .num-wrap { width: 100%; }
 .zoom button.view { font-size: 12px; border: 1px solid var(--ce-line); border-radius: 6px; padding: 3px 7px; color: var(--ce-muted); }
 .zoom button.view:hover, .zoom button.view.ce-on { border-color: var(--ce-accent); color: var(--ce-accent); }
 .proj { display: grid; grid-template-columns: 64px 1fr auto; gap: 8px; align-items: center; margin-top: 8px; padding: 6px;

@@ -1481,14 +1481,15 @@ export function setAO(patch) {
 }
 
 // ---- lens: iris (f-stop) and focus --------------------------------------------------------------
-state.dof = { on: false, fstop: 2.8, focus: 3, auto: true };   // auto = focus on the presenter (else the pivot)
+// auto = focus on the presenter (else the pivot); target = a picked point in the set, followed as the camera moves
+state.dof = { on: false, fstop: 2.8, focus: 3, auto: true, target: null };
 export function setDOF(patch) { Object.assign(state.dof, patch); }
 /** Distance (m, along the lens axis) that is in focus. */
 export function focusDistance() {
   const d = state.dof;
-  if (!d.auto) return d.focus;
+  if (!d.auto && !d.target) return d.focus;
   const fwd = camera.getWorldDirection(new THREE.Vector3());
-  const p = state.talent
+  const p = d.target ? new THREE.Vector3().fromArray(d.target) : state.talent
     ? state.talent.mesh.position.clone().setY(state.talent.mesh.position.y + Math.min(1.5, state.talent.frameH / 2))
     : controls.target;
   return Math.max(0.1, new THREE.Vector3().subVectors(p, camera.position).dot(fwd));
@@ -1498,7 +1499,7 @@ let lastFocus = 0;
 function prepareDOF(widthPx) {
   if (!state.dof.on || !dofPass) return false;
   const S = focusDistance(), f = camera.getFocalLength(), N = Math.max(0.5, state.dof.fstop);
-  if (state.dof.auto && Math.abs(S - lastFocus) > 0.01) { lastFocus = S; emit('focus', { focus: S }); }
+  if ((state.dof.auto || state.dof.target) && Math.abs(S - lastFocus) > 0.01) { lastFocus = S; emit('focus', { focus: S }); }
   // pixel radius per unit of |z−S|/z; camera.zoom (shot preview) magnifies the picture, and its blur
   const cocScale = 0.5 * (f * f / N) / Math.max(1e-3, 1000 * S - f) / camera.filmGauge * widthPx * camera.zoom;
   const u = dofPass.uniforms;

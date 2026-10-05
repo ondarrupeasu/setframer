@@ -214,9 +214,10 @@ $('fstop').addEventListener('input', () => { if (+$('fstop').value > 0) V.setDOF
 $('focusDist').addEventListener('input', () => {
   if (!(+$('focusDist').value > 0)) return;
   setSwitch('swFocusAuto', false);
-  V.setDOF({ auto: false, focus: +$('focusDist').value });
+  V.setDOF({ auto: false, target: null, focus: +$('focusDist').value });
 });
-onOff('swFocusAuto', (auto) => { V.setDOF({ auto, focus: +$('focusDist').value || 3 }); });
+onOff('swFocusAuto', (auto) => { V.setDOF({ auto, target: null, focus: +$('focusDist').value || 3 }); });
+$('btnPickFocus').onclick = () => setPick('focus', 'Click what should be in focus · Esc to cancel');
 V.events.addEventListener('focus', (e) => { if (document.activeElement !== $('focusDist')) $('focusDist').value = fmt(e.detail.focus, 2); });
 function showLensUI(dof, fog) {
   if (dof) {
@@ -371,6 +372,12 @@ window.addEventListener('keydown', (e) => {
 V.events.addEventListener('pick', (e) => {
   const { mode, mesh, point } = e.detail;
   if (mode === 'object') { V.select(V.objectOf(mesh)); return; }   // stays in select mode
+  if (mode === 'focus') {
+    setSwitch('swFocusAuto', false);
+    V.setDOF({ auto: false, target: point.toArray() });
+    $('focusDist').value = fmt(V.focusDistance(), 2);
+    setPick(null); return;
+  }
   if (mode === 'light') { V.addLight(e.detail.point, e.detail.normal, {}, mesh); setPick(null); return; }
   if (mode === 'screen') {
     const used = new Set([...V.state.roles.values()].map((r) => r.role));

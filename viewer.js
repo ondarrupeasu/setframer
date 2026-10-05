@@ -1404,7 +1404,7 @@ export function setSun(patch) { Object.assign(state.sun, patch); applySun(); }
 // card, light glows, editor helpers) is drawn sharp on top afterwards, against the set's depth — the
 // real presenter brings their own focus, and a blurred gizmo is no use. AO's camera sees layer 0 only.
 const aoCamera = new THREE.PerspectiveCamera();
-let dofPass = null;
+let dofPass = null, dofSmooth = null;
 const OVERLAY = [helpers];   // + glows (declared further down)
 const depthRT = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType) });
 const postDepthMat = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
@@ -1419,7 +1419,7 @@ const depthCopy = new FullScreenQuad(new THREE.ShaderMaterial({
 // pixels with the sensor width — the same blur the real lens gives at that iris and focus distance.
 // Gather blur on a golden-angle disc (Gustafsson's "bokeh in a single pass"), in linear light (bright
 // spots bloom into discs) — sharp things in front never pick up the blurry background behind them.
-const DOF_SAMPLES = 128;
+const DOF_SAMPLES = 160;
 const DofShader = {
   uniforms: { tDiffuse: { value: null }, tDepth: { value: depthRT.depthTexture }, texel: { value: new THREE.Vector2() },
     near: { value: 0.1 }, far: { value: 1000 }, focus: { value: 3 }, cocScale: { value: 0 }, maxR: { value: 1 } },
@@ -1449,6 +1449,33 @@ const DofShader = {
       gl_FragColor = col / tot;
     }`,
 };
+// Second, cheap pass: the gather leaves grain where the blur is big (few samples per pixel); average a
+// few neighbours that are blurred at least as much — in-focus pixels are left alone.
+const DofSmoothShader = {
+  uniforms: THREE.UniformsUtils.clone(DofShader.uniforms),
+  vertexShader: DofShader.vertexShader,
+  fragmentShader: `
+    #include <packing>
+    uniform sampler2D tDiffuse, tDepth; uniform vec2 texel;
+    uniform float near, far, focus, cocScale, maxR;
+    varying vec2 vUv;
+    float depthAt(vec2 uv) { return -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, near, far); }
+    float coc(float z) { return min(maxR, cocScale * abs(z - focus) / max(z, 1e-3)); }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float r0 = coc(depthAt(vUv));
+      float rad = min(r0, 1.5 * maxR / sqrt(float(${DOF_SAMPLES})));
+      if (rad < 0.75) { gl_FragColor = c; return; }
+      vec4 acc = c; float tot = 1.0;
+      for (int i = 0; i < 12; i++) {
+        float a = float(i) * 0.5235988 + (mod(float(i), 2.0) * 0.26);
+        vec2 uv = vUv + vec2(cos(a), sin(a)) * rad * (mod(float(i), 2.0) < 0.5 ? 1.0 : 0.5) * texel;
+        if (coc(depthAt(uv)) < rad * 0.5) continue;
+        acc += texture2D(tDiffuse, uv); tot += 1.0;
+      }
+      gl_FragColor = acc / tot;
+    }`,
+};
 
 function buildComposer() {
   composer?.dispose?.();
@@ -1460,6 +1487,8 @@ function buildComposer() {
   composer.addPass(gtao);
   dofPass = new ShaderPass(DofShader);
   composer.addPass(dofPass);
+  dofSmooth = new ShaderPass(DofSmoothShader);
+  composer.addPass(dofSmooth);
   // The output is laid OVER what is already on screen (premultiplied): a plain-colour background is
   // drawn there first, exactly as without post — through the tone mapper a dark grey turned black.
   const out = new OutputPass(), outRender = out.render.bind(out);
@@ -1494,18 +1523,31 @@ export function focusDistance() {
     : controls.target;
   return Math.max(0.1, new THREE.Vector3().subVectors(p, camera.position).dot(fwd));
 }
+/** What is acceptably sharp: [near, far] in metres (far = Infinity past the hyperfocal). CoC limit = sensor/1500. */
+export function dofRange() {
+  const S = focusDistance() * 1000, f = camera.getFocalLength(), N = Math.max(0.5, state.dof.fstop), c = camera.filmGauge / 1500;
+  const H = f * f / (N * c) + f;
+  return { focus: S / 1000, near: S * (H - f) / (H + S - 2 * f) / 1000, far: S < H ? S * (H - f) / (H - S) / 1000 : Infinity };
+}
 let lastFocus = 0;
+let lastRange = '';
+function emitRange() {
+  const r = dofRange(), key = `${r.near.toFixed(2)}|${r.far.toFixed(2)}`;
+  if (key !== lastRange) { lastRange = key; emit('dofRange', r); }
+}
 /** Update the DoF pass for this frame; false when the blur would be under half a pixel everywhere. */
 function prepareDOF(widthPx) {
   if (!state.dof.on || !dofPass) return false;
   const S = focusDistance(), f = camera.getFocalLength(), N = Math.max(0.5, state.dof.fstop);
   if ((state.dof.auto || state.dof.target) && Math.abs(S - lastFocus) > 0.01) { lastFocus = S; emit('focus', { focus: S }); }
+  emitRange();
   // pixel radius per unit of |z−S|/z; camera.zoom (shot preview) magnifies the picture, and its blur
   const cocScale = 0.5 * (f * f / N) / Math.max(1e-3, 1000 * S - f) / camera.filmGauge * widthPx * camera.zoom;
-  const u = dofPass.uniforms;
-  u.focus.value = S; u.cocScale.value = cocScale; u.near.value = camera.near; u.far.value = camera.far;
-  u.maxR.value = Math.min(0.02 * widthPx, 2.5 * cocScale);
-  return u.maxR.value >= 0.5;
+  const maxR = Math.min(0.045 * widthPx, 2.5 * cocScale);   // cap ≈ a long lens wide open, focused close
+  for (const u of [dofPass.uniforms, dofSmooth.uniforms]) {
+    u.focus.value = S; u.cocScale.value = cocScale; u.near.value = camera.near; u.far.value = camera.far; u.maxR.value = maxR;
+  }
+  return maxR >= 0.5;
 }
 
 // ---- fog ------------------------------------------------------------------------------------------
@@ -1527,8 +1569,9 @@ function draw() {
   const dof = prepareDOF(size.x);
   if (!composer || !(state.ao.on || dof)) { renderer.render(scene, camera); return; }
   gtao.enabled = state.ao.on;
-  dofPass.enabled = dof;
+  dofPass.enabled = dofSmooth.enabled = dof;
   dofPass.uniforms.texel.value.set(1 / size.x, 1 / size.y);
+  dofSmooth.uniforms.texel.value.set(1 / size.x, 1 / size.y);
   if (depthRT.width !== size.x || depthRT.height !== size.y) depthRT.setSize(size.x, size.y);
   const bg = scene.background, shadows = renderer.shadowMap.autoUpdate;
   const ov = OVERLAY.map((o) => o.visible);

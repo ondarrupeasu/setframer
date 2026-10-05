@@ -219,6 +219,10 @@ $('focusDist').addEventListener('input', () => {
 onOff('swFocusAuto', (auto) => { V.setDOF({ auto, target: null, focus: +$('focusDist').value || 3 }); });
 $('btnPickFocus').onclick = () => setPick('focus', 'Click what should be in focus · Esc to cancel');
 V.events.addEventListener('focus', (e) => { if (document.activeElement !== $('focusDist')) $('focusDist').value = fmt(e.detail.focus, 2); });
+V.events.addEventListener('dofRange', (e) => {
+  const r = e.detail, m = (x) => (x >= 100 ? Math.round(x) : fmt(x, x < 10 ? 2 : 1));
+  $('dofRange').textContent = `Sharp from ${m(r.near)} m to ${r.far === Infinity ? '∞' : m(r.far) + ' m'} (focus ${m(r.focus)} m)`;
+});
 function showLensUI(dof, fog) {
   if (dof) {
     setSwitch('swDof', dof.on); $('dofCtl').hidden = !dof.on;

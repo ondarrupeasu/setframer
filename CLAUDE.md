@@ -68,6 +68,17 @@ vMix**. Los alumnos de Tartanga ya ponen el fondo del croma con vMix → esa es 
   (KHR_lights_punctual) se listan como «from the file» (fuerza ×, sombra, apagar). Sin rebotes (eso = hornear en Blender).
   OJO: la propiedad `cone` es el ángulo; la guía visual es `coneHelper`.
 
+- **Post (AO / profundidad de campo)** (`draw()`): solo el SET pasa por el EffectComposer (RenderPass → GTAO → DoF →
+  OutputPass); el *overlay* (`OVERLAY` = `helpers` + `glows`: tarjeta del presentador, gizmos, glows) se pinta después,
+  nítido, contra la profundidad del set (pase depth-only propio en `depthRT` + `depthCopy` escribe `gl_FragDepth` en
+  pantalla). DoF físico: CoC = (f²/N)·|z−S|/(z·(S−f)) → píxeles con el ancho de sensor; gather en disco golden-angle
+  (128 muestras, máx. 2 % del ancho). *Follow presenter* = foco en el presentador, o en el pivote si no hay. El iris NO
+  toca la exposición (a propósito). OJO: el OutputPass hace tone mapping de TODO → un fondo de color liso salía más
+  oscuro (Neutral aplasta los oscuros); por eso el RenderPass limpia a alpha 0, el fondo de color se pinta directo en
+  pantalla (`bgScene`) y el OutputPass se compone encima en premultiplicado.
+- **Niebla**: `THREE.Fog` lineal (Start/End m). Sale en fondo y primer plano, no en el presentador ni en el HDRI/cielo.
+  La tarjeta del presentador tiene `fog:false`.
+
 ## Ficheros
 `index.html` · `app.js` (UI) · `project.js` (guardar/abrir proyectos) · `output.html` (salida limpia) · `viewer.js` (three.js: escena, carga, cámara, roles, picking, PNG) · `vmixset.js`
 (pases UV, PNG 16 bit propio, config.xml, zip con fflate) · `demo.js` (plató procedural para probar sin assets) ·

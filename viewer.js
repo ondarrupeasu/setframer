@@ -8,6 +8,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -636,7 +638,7 @@ export function placeTalent(point, frameH = 2.2) {
   removeTalent();
   const geo = new THREE.PlaneGeometry(1, 1);
   geo.translate(0, 0.5, 0);    // origin at the bottom edge (feet)
-  const mat = new THREE.MeshBasicMaterial({ map: cardTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+  const mat = new THREE.MeshBasicMaterial({ map: cardTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, toneMapped: false, fog: false });
   const mesh = new THREE.Mesh(geo, mat);
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xff5a4d }));
   mesh.add(edges);
@@ -1099,7 +1101,7 @@ export function snapshot() {
     units: state.units,
     env: { ...state.env },
     exposure: renderer.toneMappingExposure,
-    sun: { ...state.sun }, ao: { ...state.ao },
+    sun: { ...state.sun }, ao: { ...state.ao }, dof: { ...state.dof }, fog: { ...state.fog },
     lights: lightsSnapshot(),
     view: getView(),
     roles: [...state.roles.entries()].map(([uuid, r]) => {
@@ -1144,6 +1146,8 @@ export function restore(snap) {
   if (snap.exposure) setExposure(snap.exposure);
   if (snap.sun) setSun(snap.sun);
   if (snap.ao) setAO(snap.ao);
+  setDOF(snap.dof || { on: false });
+  setFog(snap.fog || { on: false });
   if (snap.lights) restoreLights(snap.lights);
   if (snap.view) setView(snap.view);
   emit('objects');
@@ -1396,18 +1400,72 @@ function applySun() {
 }
 export function setSun(patch) { Object.assign(state.sun, patch); applySun(); }
 
-// AO = GTAO post-process. It sees the set through its own camera limited to layer 0, so the
-// presenter card (layer 1) never darkens the set around it.
+// Post chain = AO (GTAO) and/or depth of field. Only the SET goes through it: the overlay (presenter
+// card, light glows, editor helpers) is drawn sharp on top afterwards, against the set's depth — the
+// real presenter brings their own focus, and a blurred gizmo is no use. AO's camera sees layer 0 only.
 const aoCamera = new THREE.PerspectiveCamera();
+let dofPass = null;
+const OVERLAY = [helpers];   // + glows (declared further down)
+const depthRT = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1, THREE.FloatType) });
+const postDepthMat = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
+const depthCopy = new FullScreenQuad(new THREE.ShaderMaterial({
+  uniforms: { tDepth: { value: depthRT.depthTexture } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: 'uniform sampler2D tDepth; varying vec2 vUv; void main() { gl_FragDepth = texture2D(tDepth, vUv).x; }',
+  colorWrite: false, depthWrite: true, depthTest: true, depthFunc: THREE.AlwaysDepth,
+}));
+
+// Depth of field, physical: circle of confusion on the sensor = (f²/N)·|z − S| / (z·(S − f)), turned into
+// pixels with the sensor width — the same blur the real lens gives at that iris and focus distance.
+// Gather blur on a golden-angle disc (Gustafsson's "bokeh in a single pass"), in linear light (bright
+// spots bloom into discs) — sharp things in front never pick up the blurry background behind them.
+const DOF_SAMPLES = 128;
+const DofShader = {
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: depthRT.depthTexture }, texel: { value: new THREE.Vector2() },
+    near: { value: 0.1 }, far: { value: 1000 }, focus: { value: 3 }, cocScale: { value: 0 }, maxR: { value: 1 } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    #include <packing>
+    uniform sampler2D tDiffuse, tDepth; uniform vec2 texel;
+    uniform float near, far, focus, cocScale, maxR;
+    varying vec2 vUv;
+    float depthAt(vec2 uv) { return -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, near, far); }
+    float coc(float z) { return min(maxR, cocScale * abs(z - focus) / max(z, 1e-3)); }
+    void main() {
+      vec4 col = texture2D(tDiffuse, vUv);   // premultiplied alpha: a plain-colour background is added later
+      float z0 = depthAt(vUv), r0 = coc(z0);
+      float tot = 1.0, spacing = maxR / sqrt(float(${DOF_SAMPLES}));
+      float rot = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;   // noise, not rings
+      for (int i = 0; i < ${DOF_SAMPLES}; i++) {
+        float r = maxR * sqrt((float(i) + 0.5) / float(${DOF_SAMPLES}));
+        float a = float(i) * 2.39996323 + rot;
+        vec2 uv = vUv + vec2(cos(a), sin(a)) * r * texel;
+        float z = depthAt(uv), rs = coc(z);
+        if (z > z0) rs = min(rs, r0 * 2.0);
+        float m = smoothstep(r - spacing, r + spacing, rs);
+        col += mix(col / tot, texture2D(tDiffuse, uv), m);
+        tot += 1.0;
+      }
+      gl_FragColor = col / tot;
+    }`,
+};
+
 function buildComposer() {
   composer?.dispose?.();
   composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new RenderPass(scene, camera, null, new THREE.Color(0, 0, 0), 0));
   const size = renderer.getSize(new THREE.Vector2());
   gtao = new GTAOPass(scene, aoCamera, size.x, size.y);
   gtao.output = GTAOPass.OUTPUT.Default;
   composer.addPass(gtao);
-  composer.addPass(new OutputPass());
+  dofPass = new ShaderPass(DofShader);
+  composer.addPass(dofPass);
+  // The output is laid OVER what is already on screen (premultiplied): a plain-colour background is
+  // drawn there first, exactly as without post — through the tone mapper a dark grey turned black.
+  const out = new OutputPass(), outRender = out.render.bind(out);
+  Object.assign(out.material, { transparent: true, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor });
+  out.render = (r, ...rest) => { const ac = r.autoClear; r.autoClear = false; outRender(r, ...rest); r.autoClear = ac; };
+  composer.addPass(out);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(size.x, size.y);
   applyAO();
@@ -1419,18 +1477,83 @@ function applyAO() {
 }
 export function setAO(patch) {
   Object.assign(state.ao, patch);
-  if (state.ao.on && !composer) buildComposer();
   applyAO();
 }
-/** Draw the scene to the canvas: plain, or through the AO composer when AO is on. */
+
+// ---- lens: iris (f-stop) and focus --------------------------------------------------------------
+state.dof = { on: false, fstop: 2.8, focus: 3, auto: true };   // auto = focus on the presenter (else the pivot)
+export function setDOF(patch) { Object.assign(state.dof, patch); }
+/** Distance (m, along the lens axis) that is in focus. */
+export function focusDistance() {
+  const d = state.dof;
+  if (!d.auto) return d.focus;
+  const fwd = camera.getWorldDirection(new THREE.Vector3());
+  const p = state.talent
+    ? state.talent.mesh.position.clone().setY(state.talent.mesh.position.y + Math.min(1.5, state.talent.frameH / 2))
+    : controls.target;
+  return Math.max(0.1, new THREE.Vector3().subVectors(p, camera.position).dot(fwd));
+}
+let lastFocus = 0;
+/** Update the DoF pass for this frame; false when the blur would be under half a pixel everywhere. */
+function prepareDOF(widthPx) {
+  if (!state.dof.on || !dofPass) return false;
+  const S = focusDistance(), f = camera.getFocalLength(), N = Math.max(0.5, state.dof.fstop);
+  if (state.dof.auto && Math.abs(S - lastFocus) > 0.01) { lastFocus = S; emit('focus', { focus: S }); }
+  // pixel radius per unit of |z−S|/z; camera.zoom (shot preview) magnifies the picture, and its blur
+  const cocScale = 0.5 * (f * f / N) / Math.max(1e-3, 1000 * S - f) / camera.filmGauge * widthPx * camera.zoom;
+  const u = dofPass.uniforms;
+  u.focus.value = S; u.cocScale.value = cocScale; u.near.value = camera.near; u.far.value = camera.far;
+  u.maxR.value = Math.min(0.02 * widthPx, 2.5 * cocScale);
+  return u.maxR.value >= 0.5;
+}
+
+// ---- fog ------------------------------------------------------------------------------------------
+state.fog = { on: false, color: '#c4c8ce', near: 2, far: 40 };   // linear: clear up to `near`, solid at `far` (m)
+export function setFog(patch) {
+  Object.assign(state.fog, patch);
+  const f = state.fog;
+  if (!f.on) { scene.fog = null; return; }
+  if (!scene.fog) scene.fog = new THREE.Fog();
+  scene.fog.color.set(f.color);
+  scene.fog.near = Math.max(0, f.near); scene.fog.far = Math.max(scene.fog.near + 0.1, f.far);
+}
+
+/** Draw the scene to the canvas: plain, or through the post chain (AO / depth of field). */
+const _dbs = new THREE.Vector2(), bgScene = new THREE.Scene();
 function draw() {
-  if (state.ao.on && composer) {
-    aoCamera.copy(camera);
-    aoCamera.layers.set(0);
-    composer.render();
-  } else {
-    renderer.render(scene, camera);
-  }
+  const size = renderer.getDrawingBufferSize(_dbs);
+  if (state.ao.on || state.dof.on) { if (!composer) buildComposer(); }
+  const dof = prepareDOF(size.x);
+  if (!composer || !(state.ao.on || dof)) { renderer.render(scene, camera); return; }
+  gtao.enabled = state.ao.on;
+  dofPass.enabled = dof;
+  dofPass.uniforms.texel.value.set(1 / size.x, 1 / size.y);
+  if (depthRT.width !== size.x || depthRT.height !== size.y) depthRT.setSize(size.x, size.y);
+  const bg = scene.background, shadows = renderer.shadowMap.autoUpdate;
+  const ov = OVERLAY.map((o) => o.visible);
+  // 1. the set's depth (for the blur, and so the overlay is still hidden behind the desk)
+  OVERLAY.forEach((o) => { o.visible = false; });
+  scene.background = null; scene.overrideMaterial = postDepthMat; renderer.shadowMap.autoUpdate = false;
+  renderer.setRenderTarget(depthRT); renderer.clear(); renderer.render(scene, camera); renderer.setRenderTarget(null);
+  scene.overrideMaterial = null; scene.background = bg; renderer.shadowMap.autoUpdate = shadows;
+  // 2. the set through AO / DoF (over the plain background colour, if that is the background)
+  aoCamera.copy(camera);
+  aoCamera.layers.set(0);
+  if (bg?.isColor) { bgScene.background = bg; renderer.render(bgScene, camera); scene.background = null; }
+  composer.render();
+  scene.background = bg;
+  // 3. the overlay, sharp, on top
+  OVERLAY.forEach((o, i) => { o.visible = ov[i]; });
+  if (!ov.some(Boolean)) return;
+  renderer.autoClear = false;
+  depthCopy.render(renderer);
+  const root = state.setRoot, rootVis = root?.visible;
+  if (root) root.visible = false;
+  scene.background = null; renderer.shadowMap.autoUpdate = false;
+  renderer.render(scene, camera);
+  if (root) root.visible = rootVis;
+  scene.background = bg; renderer.shadowMap.autoUpdate = shadows;
+  renderer.autoClear = true;
 }
 
 // ---- procedural sky (no download needed): background + lighting, following the sun --------------
@@ -1463,7 +1586,7 @@ export function setClouds(v) { state.env.clouds = v; if (state.env.background ==
 // sprite makes the lamp itself look on. No bounce light (that is what baking in Blender is for).
 // Lights that come INSIDE the glTF (KHR_lights_punctual) are listed too ("from the file").
 const lightsGroup = new THREE.Group(); scene.add(lightsGroup);
-export const glows = new THREE.Group(); scene.add(glows);
+export const glows = new THREE.Group(); scene.add(glows); OVERLAY.push(glows);
 const handles = new THREE.Group(); handles.visible = false; helpers.add(handles);
 state.lights = [];
 let lightSeq = 0, selectedLightId = null;

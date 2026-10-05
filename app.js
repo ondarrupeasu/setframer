@@ -198,6 +198,40 @@ slider('sunInt', (v) => V.setSun({ intensity: v / 10 }), (v) => fmt(v / 10, 1));
 slider('sunK', (v) => V.setSun({ kelvin: v }), (v) => `${v} K`);
 slider('aoStr', (v) => V.setAO({ strength: v / 100 }), (v) => fmt(v / 100));
 slider('aoRad', (v) => V.setAO({ radius: v / 100 }), (v) => `${fmt(v / 100)} m`);
+// Fog (Lighting) and depth of field (Camera)
+onOff('swFog', (on) => {
+  $('fogCtl').hidden = !on;
+  if (on && !V.state.fog.touched && V.state.setRoot) {   // first time: scale to the set
+    const d = Math.max(2, V.cameraInfo().dist), size = Math.max(5, V.state.sceneSize);   // a light haze to start from
+    $('fogNear').value = Math.round(d * 0.5); $('fogFar').value = Math.round(Math.max(size * 3, d * 6));
+  }
+  V.setFog({ on, near: +$('fogNear').value, far: +$('fogFar').value, color: $('fogColor').value, touched: true });
+});
+$('fogColor').oninput = (e) => V.setFog({ color: e.target.value });
+for (const id of ['fogNear', 'fogFar']) $(id).addEventListener('input', () => V.setFog({ near: +$('fogNear').value, far: +$('fogFar').value }));
+onOff('swDof', (on) => { $('dofCtl').hidden = !on; V.setDOF({ on, fstop: +$('fstop').value || 2.8 }); });
+$('fstop').addEventListener('input', () => { if (+$('fstop').value > 0) V.setDOF({ fstop: +$('fstop').value }); });
+$('focusDist').addEventListener('input', () => {
+  if (!(+$('focusDist').value > 0)) return;
+  setSwitch('swFocusAuto', false);
+  V.setDOF({ auto: false, focus: +$('focusDist').value });
+});
+onOff('swFocusAuto', (auto) => { V.setDOF({ auto, focus: +$('focusDist').value || 3 }); });
+V.events.addEventListener('focus', (e) => { if (document.activeElement !== $('focusDist')) $('focusDist').value = fmt(e.detail.focus, 2); });
+function showLensUI(dof, fog) {
+  if (dof) {
+    setSwitch('swDof', dof.on); $('dofCtl').hidden = !dof.on;
+    if (dof.fstop) $('fstop').value = dof.fstop;
+    setSwitch('swFocusAuto', dof.auto !== false);
+    if (dof.focus) $('focusDist').value = fmt(dof.focus, 2);
+  }
+  if (fog) {
+    setSwitch('swFog', fog.on); $('fogCtl').hidden = !fog.on;
+    if (fog.color) $('fogColor').value = fog.color;
+    if (fog.near != null) $('fogNear').value = fog.near;
+    if (fog.far != null) $('fogFar').value = fog.far;
+  }
+}
 /** Show the sun / AO state from a restored project (V.restore applies it to the scene). */
 function showLightUI(sun, ao) {
   if (sun) {
@@ -585,7 +619,7 @@ async function applyProject(data, files) {
       $('keyColor').value = u.key.color;
       setSlider('keySim', u.key.sim); setSlider('keySmooth', u.key.smooth); setSlider('keySpill', u.key.spill);
     }
-    if (data.snap) { V.restore(data.snap); showLightUI(data.snap.sun, data.snap.ao); }
+    if (data.snap) { V.restore(data.snap); showLightUI(data.snap.sun, data.snap.ao); showLensUI(data.snap.dof || { on: false }, data.snap.fog || { on: false }); }
     lastAuto = JSON.stringify(collect());
   } finally { restoring = false; }
 }

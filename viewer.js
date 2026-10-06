@@ -1489,6 +1489,9 @@ function buildComposer() {
   composer.addPass(dofPass);
   dofSmooth = new ShaderPass(DofSmoothShader);
   composer.addPass(dofSmooth);
+  // ShaderPass CLONES its uniforms: a cloned DepthTexture is an empty texture (the blur then read
+  // garbage depth — everything blurred alike). Point both passes at the real one.
+  for (const p of [dofPass, dofSmooth]) p.uniforms.tDepth.value = depthRT.depthTexture;
   // The output is laid OVER what is already on screen (premultiplied): a plain-colour background is
   // drawn there first, exactly as without post — through the tone mapper a dark grey turned black.
   const out = new OutputPass(), outRender = out.render.bind(out);

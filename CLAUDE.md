@@ -1,9 +1,56 @@
-# SetFrameR
+# CLAUDE.md — SetFrameR
 
-**Qué es:** PWA (sin backend, sin build) que carga un **set virtual 3D (glTF/GLB) + HDRI**, deja encuadrar con la
-cámara casada a la real (sensor + óptica del catálogo de ClapperQR, altura, tilt, pan) y **exporta un Virtual Set de
-vMix**. Los alumnos de Tartanga ya ponen el fondo del croma con vMix → esa es la salida natural. Brief original:
-`BRIEF.md` (allí ponía escritorio PySide6; **se cambió a PWA el 4-oct-2026**, decisión de Alex).
+## Qué es
+- PWA (sin backend, sin build) que carga un **set virtual 3D (glTF/GLB) + HDRI**, deja encuadrar con la cámara
+  casada a la real (sensor + óptica del catálogo de ClapperQR, altura, tilt, pan, iris/foco) y **exporta un Virtual
+  Set de vMix** (+ salida limpia en vivo para el ATEM). Para los alumnos de Tartanga, que ya ponen el fondo del croma
+  con vMix. Brief original: `BRIEF.md` (allí ponía escritorio PySide6; **se cambió a PWA el 4-oct-2026**, decisión de Alex).
+- Web en producción: https://setframer.cinemafilmak.com · Repo: `ondarrupeasu/setframer` (público), rama `main` ·
+  Hosting: GitHub Pages (raíz de `main`, `CNAME` en el repo, HTTPS forzado).
+- Stack: HTML + JS módulos sin build, three.js r186 vendorizado en `vendor/three` (import map), fflate, IndexedDB,
+  service worker network-first. Local: `.claude/launch.json` → "setframer" (`tools/devserver.py`, puerto 8791, sin caché).
+
+## Cómo trabajamos (reglas permanentes)
+- Responde a Alex en castellano; la interfaz de la app en inglés (idiomas eu/es/en: pendiente).
+- Fidelidad: el formato vMix se basa en lo verificado (`uvmapsample.zip` oficial); lo no verificado (`<zoom>` x/y,
+  alpha parcial del UV map) se marca como tal en código, docs y manual. La óptica es física (DoF, FOV), no a ojo.
+- Sin ajustes ocultos: si algo cambia el estado sin que el usuario lo haga, se dice en pantalla (p. ej. unidades
+  detectadas, *Follow presenter* que se apaga al fijar foco a mano).
+- **Publicar (PWA, deploy en push a `main`):** push a `main` = publicar. Con la publicación autorizada en la sesión,
+  cada cambio **probado** se pushea y se verifica en producción sin volver a preguntar. Pasos:
+  1. Subir `CACHE` en `sw.js` si cambian ficheros del shell.
+  2. Commit + push a `main`.
+  3. Verificar: `until curl -s https://setframer.cinemafilmak.com/index.html | grep -q <algo nuevo>; do sleep 5; done`.
+  Lo irreversible o que sale fuera (borrar datos, enviar mensajes, pagos, credenciales) **se pregunta antes**.
+- Pantalla: el visor 3D se ajusta a la ventana (letterbox 16:9); el panel lateral hace scroll. Probar a 1440×850.
+- Manual de usuario: Claude Doc (artifact e7856649-dd89-4afd-80fe-97d49b5f66b7) → exportar a `SetFrameR-Manual.pdf`
+  en cada cambio visible para el usuario.
+- Si hay una duda que solo puede resolver una persona, apuntarla en `docs/preguntas.md` y seguir con la opción
+  más prudente, diciéndolo.
+
+## Método (lo que mejor ha funcionado)
+1. Leer antes de escribir: este fichero, `docs/` y el código que se va a tocar.
+2. **Delegar la investigación en paralelo**: para APIs grandes (three.js, glTF/extensiones, HDRI/IBL, formato y API
+   de vMix, NDI…), lanzar subagentes de solo lectura en segundo plano (uno por tema, con límite de palabras) y, mientras
+   trabajan, construir con lo que ya se sabe. El contexto principal queda para decidir y escribir.
+3. Un patrón común antes de repetir algo N veces (`draw()` único punto de render; un pase UV genérico para pantallas
+   y presentador), en vez de N copias.
+4. Probarlo de verdad: servidor local + navegador integrado, sets reales de `samples/`, renders enviados a un receptor
+   local para mirarlos, consola sin errores, `tools/simulate_vmix.py` para el set exportado. Decir qué se ha probado
+   y qué no (hardware real: capturadora, trackpad, Safari, vMix).
+5. Publicar y verificar en producción, sin bucles de espera largos.
+6. Cerrar dejando el traspaso al día (este fichero: notas técnicas y pendientes).
+
+## Archivos de referencia
+`BRIEF.md` (encargo original) · `docs/EXPORT_FORMAT.md` (especificación del export, para TVstudio) ·
+`examples/DemoStudio/` (set de muestra) · `SetFrameR-Manual.pdf` · `.claude/launch.json` (servidor local).
+
+## Seguridad / operaciones
+- No hay credenciales en el proyecto; nunca mostrar ni repetir ninguna.
+- No se publica: `samples/` (sets de Sketchfab, licencias de terceros), `setframer/` y `.venv/` (restos PySide6) — en `.gitignore`.
+- Nada de rm con rutas variables; mirar antes de borrar o sobrescribir.
+
+# Notas técnicas
 
 ## Formato vMix Virtual Set (verificado)
 - Una **carpeta**: `config.xml` + PNGs. vMix: *Add Input → Virtual Set → Browse* (no hace falta ninguna carpeta especial).

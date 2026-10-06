@@ -5,3 +5,4 @@ __pycache__/
 samples/
 # leftovers of the first PySide6 desktop prototype (superseded by the PWA)
 setframer/
+SetFrameR-Manual copia.pdf

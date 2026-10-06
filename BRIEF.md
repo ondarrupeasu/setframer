@@ -1,5 +1,9 @@
 # SetFrameR — visor de sets virtuales → fondo fijo para croma
 
+> **Superado (4-oct-2026, decisión de Alex):** SetFrameR se hizo como **PWA**, no como app de escritorio
+> PySide6, y su salida es un **Virtual Set de vMix**, no un PNG fijo. El estado real está en `CLAUDE.md`. Este
+> brief se conserva como encargo original.
+
 > **Proyecto NUEVO.** Arrancar en su **sesión propia** en esta carpeta (`~/Proyectos/setframer`).
 > App de ESCRITORIO de la suite (-R). Nombre: **SetFrameR** · bundle_id `es.cinemafilmak.setframer`.
 > Carpeta creada 4-oct-2026 por MissionControl (nombre confirmado por Alex).

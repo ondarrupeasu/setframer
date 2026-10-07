@@ -41,6 +41,36 @@ function onWheelNudge(el) {
 }
 const CHEV_UP = '<svg viewBox="0 0 10 10"><path d="M2 6.5 5 3.5 8 6.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const CHEV_DN = '<svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+/**
+ * DaVinci-style scrubbing: press on a number box and drag left/right to change it (one step per 4 px,
+ * Shift = a tenth, Alt = ×10); a plain click (no drag) still lets you type.
+ */
+function scrubbable(input) {
+  input.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || document.activeElement === input) return;   // already typing: normal editing
+    e.preventDefault();
+    const x0 = e.clientX, v0 = +input.value || 0, step = +input.step || 1, d = decimalsOf(input.step || 1);
+    const min = input.min === '' ? -Infinity : +input.min, max = input.max === '' ? Infinity : +input.max;
+    let dragged = false;
+    const move = (ev) => {
+      const dx = ev.clientX - x0;
+      if (!dragged && Math.abs(dx) < 3) return;
+      dragged = true; document.body.style.cursor = 'ew-resize';
+      const k = ev.shiftKey ? 0.1 : ev.altKey ? 10 : 1;
+      const v = Math.min(max, Math.max(min, v0 + (dx / 4) * step * k));
+      input.value = String(+v.toFixed(d + (ev.shiftKey ? 1 : 0)));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      document.body.style.cursor = '';
+      if (!dragged) { input.focus(); input.select(); }
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  });
+  input.style.cursor = 'ew-resize';
+}
 function enhanceNumbers(root = document) {
   for (const input of root.querySelectorAll('input.ce-inp.num:not([data-enh])')) {
     input.dataset.enh = '1';
@@ -63,6 +93,7 @@ function enhanceNumbers(root = document) {
     hold(up, 1); hold(dn, -1);
     wrap.append(steps);
     wrap.addEventListener('wheel', onWheelNudge(input), { passive: false });
+    scrubbable(input);
   }
   for (const range of root.querySelectorAll('.ce-slider input[type=range]:not([data-enh])')) {
     range.dataset.enh = '1';
